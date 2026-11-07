@@ -19,6 +19,12 @@
     <button id="authSend">Sign in</button>
     <button id="authReset" class="auth-reset">Forgot password?</button>
     <div id="authMsg" class="auth-msg"></div>
+    <!-- password recovery (shown when the email magic link lands here) -->
+    <div id="recoveryBox" style="display:none">
+      <div class="auth-sub" style="margin-top:8px">Set a new password</div>
+      <input id="recoveryPass" type="password" placeholder="New password" autocomplete="new-password" />
+      <button id="recoverySave">Update password</button>
+    </div>
   </div>
 </div>
 

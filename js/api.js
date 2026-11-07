@@ -14,9 +14,8 @@ API.employeeLogin = (email) => API.loginSupabaseUser(email);
 API.supabaseLogin = (email, meta) => API.loginSupabaseUser(email);
 API.getProjectsTasks = () => API.refs();
 API.getSettings = (...a) => API.settings(...a);
-API.addActivity = (...a) => API.addActivity(...a);
-API.listSchedules = (...a) => API.listSchedules(...a);
-API.attendanceAll = (...a) => API.attendanceAll(...a);
+// NOTE: do NOT alias listSchedules/addActivity/attendanceAll here — they share
+// names with the real Store methods, so an alias would recurse on itself.
 
 /* In live mode we would point these at a transport talking to Supabase/GAS. */
 

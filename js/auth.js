@@ -71,11 +71,34 @@
   }
 
   function wire() {
+    // Ensure the client exists before binding the state-change listener.
+    // (init()/gate() create it too, but they run AFTER wire() on load.)
+    if (enabled() && !sb) {
+      try { sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey); } catch (e) {}
+    }
     var btn = document.getElementById('authSend');
     var input = document.getElementById('authEmail');
     var msg = document.getElementById('authMsg');
     var logout = document.getElementById('authLogoutBtn');
     var resetBtn = document.getElementById('authReset');
+    var recoveryBox = document.getElementById('recoveryBox');
+    var recoverySave = document.getElementById('recoverySave');
+    var recoveryPass = document.getElementById('recoveryPass');
+    var loginRow = function () {
+      var r = [];
+      if (btn) r.push(btn); if (input) r.push(input);
+      if (document.getElementById('authPass')) r.push(document.getElementById('authPass'));
+      if (resetBtn) r.push(resetBtn);
+      return r;
+    };
+    var showRecovery = function () {
+      if (recoveryBox) recoveryBox.style.display = 'block';
+      loginRow().forEach(function (el) { if (el) el.style.display = 'none'; });
+    };
+    var showLogin = function () {
+      if (recoveryBox) recoveryBox.style.display = 'none';
+      loginRow().forEach(function (el) { if (el) el.style.display = ''; });
+    };
     if (logout) logout.addEventListener('click', function () { window.AUTH.signOut(); });
 
     /* Agent password reset: sends a Supabase reset email. */
@@ -91,6 +114,30 @@
           });
         }
       });
+    }
+
+    /* Save the new password from the recovery (magic-link) flow. */
+    if (recoverySave) {
+      recoverySave.addEventListener('click', function () {
+        var np = (recoveryPass && recoveryPass.value || '').trim();
+        if (np.length < 6) { if (msg) msg.textContent = 'Password must be at least 6 characters.'; return; }
+        recoverySave.disabled = true;
+        if (msg) msg.textContent = 'Updating…';
+        window.AUTH.updatePassword(np).then(function (r) {
+          recoverySave.disabled = false;
+          if (r && r.error) { if (msg) msg.textContent = r.error.message; return; }
+          // password updated; if we have a session now we can enter the app
+          recoveryPass.value = '';
+          if (msg) { msg.textContent = 'Password updated. Sign in with your new password.'; }
+          showLogin();
+          if (recoveryBox) recoveryBox.style.display = 'none';
+          // allow user to sign in fresh
+          if (sb) sb.auth.signOut().then(function(){ showOverlay(); });
+          /* optionally auto-enter if we have a full session:
+             handled by onAuthStateChange -> normal sign-in still needed */
+        });
+      });
+      if (recoveryPass) recoveryPass.addEventListener('keydown', function (e) { if (e.key === 'Enter') recoverySave.click(); });
     }
 
     if (!btn) return;
@@ -118,13 +165,22 @@
 
     // auth state changes (refresh / magic-link / recovery)
     if (sb) sb.auth.onAuthStateChange(function (event, session) {
+      if (event === 'PASSWORD_RECOVERY') {
+        // User clicked the email reset link; a recovering session exists.
+        user = session && session.user;
+        showOverlay();
+        showRecovery();
+        if (msg) msg.textContent = '';
+        return;
+      }
       if (session && session.user) {
         isAllowed(session.user.email).then(function (ok) {
-          if (ok) { user = session.user; hideOverlay(); if (onAuthorized) onAuthorized(session.user.email); }
+          if (ok) { user = session.user; hideOverlay(); showLogin();
+            if (typeof onAuthorized === 'function') onAuthorized(session.user.email); }
           else { if (msg) msg.textContent = 'This email is not authorized.'; sb.auth.signOut(); showOverlay(); }
         });
       } else {
-        showOverlay();
+        showOverlay(); showLogin();
       }
     });
   }
@@ -137,6 +193,11 @@
     resetPassword: function (email) {
       if (!sb) return Promise.resolve({ error: { message: 'Supabase not configured' } });
       return sb.auth.resetPasswordForEmail(email);
+    },
+    /* Sets the new password during the PASSWORD_RECOVERY (email magic link) flow. */
+    updatePassword: function (newPassword) {
+      if (!sb) return Promise.resolve({ error: { message: 'Supabase not configured' } });
+      return sb.auth.updateUser({ password: newPassword });
     },
   };
 

@@ -127,9 +127,10 @@
 
   function bindEmpClicks() {
     document.querySelectorAll(".clickable-emp").forEach(tr => tr.addEventListener("click", () => {
-      const id = tr.dataset.emp;
+      const id = tr.dataset.emp || tr.dataset.eid;
+      if (!id) return;
       state.empId = id;
-      switchPage("employees");
+      switchPage(state.page === "overview" ? "employees" : state.page);
     }));
   }
 
@@ -270,8 +271,8 @@
   function renderSchedule() {
     addHeadFilters(`<input type="month" id="schMo" value="${todayStr().slice(0,7)}"><button class="btn" id="schApply">Apply</button>`);
     const month = todayStr().slice(0,7);
-    const scheds = API.listSchedules().data;
-    const att = API.attendanceAll().data;
+    const scheds = (API.listSchedules() && API.listSchedules().data) || [];
+    const att = (API.attendanceAll() && API.attendanceAll().data) || [];
     // Team view: rows=employees, cols=days
     const empList = API._raw.employees.filter(e=>e.is_active);
     const rows = empList.map(e => {
