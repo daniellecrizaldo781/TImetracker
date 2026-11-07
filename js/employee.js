@@ -59,6 +59,9 @@
 
   async function enterTracker() {
     bindDemoBanner();
+    if (typeof LIVE !== 'undefined' && LIVE.enabled()) {
+      try { await LIVE.syncIntoStore(); } catch (e) { console.warn('live sync', e); }
+    }
     const ref = API.refs();
     projects = ref.data.projects || [];
     tasks = ref.data.tasks || [];

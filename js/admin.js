@@ -39,6 +39,11 @@
 
   async function enterDash() {
     if (API.isDemo()) { $("demoBanner").hidden = false; $("demoBanner").textContent = window.TT_CONFIG.DEMO_NOTE; }
+    // Pull real people/projects/tasks from Supabase when the authed admin has
+    // them; otherwise the Demo Store's seeded data stays.
+    if (typeof LIVE !== 'undefined' && LIVE.enabled()) {
+      try { await LIVE.syncIntoStore(); } catch (e) { console.warn('live sync', e); }
+    }
     const ref = API.refs().data;
     ref.employees.forEach(e => empIndex[e.id] = e);
     ref.projects.forEach(p => projectsIndex[p.id] = p);
