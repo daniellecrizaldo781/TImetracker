@@ -28,6 +28,7 @@
     trackerMsg: $("trackerMsg"), demoBanner: $("demoBanner"),
     captureExplain: $("captureExplain"), capturePreview: $("capturePreview"),
     captureOn: $("captureOnBtn"), captureOff: $("captureOffBtn"), captureMsg: $("captureMsg"),
+    logoutBtn: $("logoutBtn"),
   };
 
   function showView(name) {
@@ -280,13 +281,14 @@
 
   /* ---------------- wiring ---------------- */
   async function init() {
+    showView("login");
     el.brandName.textContent = CFG.APP_NAME;
     el.trackerBrand.textContent = CFG.APP_NAME;
     bindDemoBanner();
 
     el.loginBtn.addEventListener("click", doLogin);
-    el.loginEmail.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
-    el.loginPin.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+    el.email.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+    el.pin.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 
     el.project.addEventListener("change", refreshTaskSelect);
     el.start.addEventListener("click", startSession);
