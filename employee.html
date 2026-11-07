@@ -54,7 +54,6 @@
     <div class="header-right">
       <span id="userEmail" class="pill"></span>
       <span id="statusPill" class="pill">Offline</span>
-      <span id="screenshotPill" class="pill">Screenshots: off</span>
       <button class="btn ghost" id="logoutBtn">Logout</button>
     </div>
   </header>
@@ -95,22 +94,6 @@
       <div id="breakCountdown" class="break-countdown" hidden></div>
       <div id="breakRemaining" class="break-remaining muted"></div>
     </section>
-
-    <!-- Capture status -->
-    <section class="card capture-card">
-      <h3>Screen capture</h3>
-      <p class="muted" id="captureExplain">
-        Optional. Screen capture uses your browser's screen-share permission
-        (<code>getDisplayMedia</code>). It only ever captures while you are
-        tracking, and never during a break. You can stop it at any time.
-      </p>
-      <video id="capturePreview" class="preview-video" muted playsinline hidden></video>
-      <div class="btn-row" id="captureControls">
-        <button class="btn" id="captureOnBtn">Enable screen capture</button>
-        <button class="btn danger" id="captureOffBtn" hidden>Stop screen share</button>
-      </div>
-      <p id="captureMsg" class="msg" hidden></p>
-    </section>
   </main>
 </div>
 
@@ -122,7 +105,6 @@
 <script src="js/auth.js"></script>
 <script src="js/live.js"></script>
 <script src="js/activity.js"></script>
-<script src="js/screenshot.js"></script>
 <script src="js/employee.js"></script>
 </body>
 </html>

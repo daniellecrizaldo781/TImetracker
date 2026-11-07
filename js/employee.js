@@ -10,7 +10,7 @@
   let projects = [];
   let tasks = [];
   let allowances = {};
-  let settings = { screenshotIntervalMin: 10, idleThresholdMin: 5, deductIdleTime: false };
+  let settings = { idleThresholdMin: 5, deductIdleTime: false };
   let currentSession = null;   // active/paused session
   let currentBreak = null;     // in-progress break (Store ref)
   let breakTimer = null;
@@ -21,13 +21,11 @@
   const el = {
     email: $("loginEmail"), pin: $("loginPin"), loginMsg: $("loginMsg"), loginBtn: $("loginBtn"),
     brandName: $("brandName"), trackerBrand: $("trackerBrand"), userEmail: $("userEmail"),
-    statusPill: $("statusPill"), screenshotPill: $("screenshotPill"),
+    statusPill: $("statusPill"),
     elapsed: $("elapsedDisplay"), liveActivity: $("liveActivity"), todayTotal: $("todayTotal"), idleStatus: $("idleStatus"),
     project: $("projectSelect"), task: $("taskSelect"),
     start: $("startBtn"), pause: $("pauseBtn"), resume: $("resumeBtn"), stop: $("stopBtn"),
     trackerMsg: $("trackerMsg"), demoBanner: $("demoBanner"),
-    captureExplain: $("captureExplain"), capturePreview: $("capturePreview"),
-    captureOn: $("captureOnBtn"), captureOff: $("captureOffBtn"), captureMsg: $("captureMsg"),
     logoutBtn: $("logoutBtn"),
     breakCard: $("breakCard"), breakPicker: $("breakPicker"),
     breakStatus: $("breakStatus"), breakCountdown: $("breakCountdown"), breakRemaining: $("breakRemaining"),
@@ -144,7 +142,6 @@
   async function stopSession() {
     const res = API.stopSession(me.id, liveActivityPct(), currentSession ? currentSession.break_ms : 0, totalIdleMs());
     if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
-    Screenshot.stopCapture(); stopCaptureIndicator();
     if (elapsedTimer) clearInterval(elapsedTimer);
     if (breakTimer) clearInterval(breakTimer);
     currentSession = null; currentBreak = null;
@@ -200,7 +197,6 @@
     if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
     setMsg(el.trackerMsg, "", "");
     currentBreak = res.data;
-    if (Screenshot.isCapturing()) Screenshot.stopCapture();
     renderBreakUI();
   }
   function endBreakAction() {
@@ -234,41 +230,6 @@
       document.removeEventListener("mousemove", mm);
     };
   }
-
-  /* ---------------- Capture ---------------- */
-  function stopCaptureIndicator() {
-    el.screenshotPill.textContent = "Screenshots: off"; el.screenshotPill.className = "pill";
-    el.captureOn.hidden = false; el.captureOff.hidden = true;
-    setMsg(el.captureMsg, "", "");
-  }
-  async function enableCapture() {
-    if (!Screenshot.supported()) {
-      setMsg(el.captureMsg, "This browser does not support the Screen Capture API, so screenshots cannot be recorded here. No screenshot will be claimed.", "error");
-      return;
-    }
-    if (!currentSession) { setMsg(el.captureMsg, "Start a timer before enabling screen capture.", "error"); return; }
-    setMsg(el.captureMsg, "Your browser will ask you to choose a screen to share. This is required to capture screenshots.", "ok");
-    Screenshot.setPreviewVideo(el.capturePreview);
-    Screenshot.setOnStateChange((st) => {
-      if (st.capturing) {
-        el.screenshotPill.textContent = "Screenshots: ON"; el.screenshotPill.className = "pill p-ok";
-        el.captureOn.hidden = true; el.captureOff.hidden = false;
-        setMsg(el.captureMsg, "Screen capture is active.", "ok");
-      } else if (st.reason) { stopCaptureIndicator(); setMsg(el.captureMsg, st.reason, "error"); }
-    });
-    const opened = await Screenshot.requestPermission();
-    if (!opened) return;
-    Screenshot.setIntervalMs(settings.screenshotIntervalMin * 60000);
-    Screenshot.setOnShot((shot) => saveShot(shot));
-    Screenshot.start(settings.screenshotIntervalMin * 60000, () => ({
-      sessionId: currentSession.id, empId: me.id,
-      project: currentSession.project, task: currentSession.task,
-      intervalMin: settings.screenshotIntervalMin,
-    }));
-    if (API.isDemo()) setMsg(el.captureMsg, "Demo mode: captured screenshot is kept in this browser only (not synced).", "ok");
-  }
-  async function saveShot(shot) { await API.recordScreenshot({ ...shot, empId: me.id }); }
-  async function disableCapture() { Screenshot.stopCapture(); stopCaptureIndicator(); setMsg(el.captureMsg, "Screen sharing stopped.", "ok"); }
 
   /* ---------------- UI updates ---------------- */
   function refreshUI() {
@@ -310,7 +271,6 @@
 
   async function logout() {
     if (currentSession && currentSession.status === "active") { await stopSession(); }
-    Screenshot.stopCapture(true);
     if (window._activityRelease) { try { window._activityRelease(); } catch (e) {} }
     me = null; currentSession = null; currentBreak = null;
     if (elapsedTimer) clearInterval(elapsedTimer);
@@ -334,8 +294,6 @@
     });
     el.resume.addEventListener("click", resumeSession);
     el.stop.addEventListener("click", stopSession);
-    el.captureOn.addEventListener("click", enableCapture);
-    el.captureOff.addEventListener("click", disableCapture);
     el.logoutBtn.addEventListener("click", logout);
     el.breakPicker.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-break]");

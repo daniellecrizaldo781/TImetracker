@@ -4,61 +4,31 @@ A Hubstaff-inspired time tracker that runs entirely **in the browser** — no de
 app, no installer, no executable. Employees and admins use it over the web.
 
 - **Employee page** (`employee.html`): login, project/task, start / break / resume / stop,
-  live elapsed counter, today's total, activity %, screenshot capture status.
+  live elapsed counter, today's total, activity %.
 - **Admin dashboard** (`admin.html`): working / idle / on break / offline overview,
-  tracked hours, activity %, screenshot gallery, timesheets, daily/weekly/monthly reports,
-  projects, settings, and filters (employee, status, date).
+  tracked hours, activity %, timesheets, daily/weekly/monthly reports, schedule &
+  attendance, payroll, employees/teams/projects, settings, and filters.
 
-## Login (Supabase — dedicated project, same style as the Team Dashboard)
+No screenshot / screen-capture feature (removed). Tracking data is time + activity only.
 
-Login is **email + password on a dedicated Supabase project** (`cnzsfbxixcfzaegayvpp.supabase.co`, separate from the Team Dashboard), gated by the
-`allowed_emails` allow-list table. An employee is admitted only if their email is approved in that table. "Forgot password?" sends a Supabase reset email.
-
+## Login (Supabase)
+Login is **email + password on a dedicated Supabase project**
+(`cnzsfbxixcfzaegayvpp.supabase.co`, separate from the Team Dashboard).
 - Credentials live in `js/config.js` (`supabaseUrl`, `supabaseAnonKey`).
-- The Supabase client is vendored at `assets/supabase.js` (copied from the Team Dashboard).
-- **Reset-password redirect:** in the Supabase dashboard (Authentication → URL
-  Configuration), set "Redirect URLs" to include `https://timetracker.daniellecrizaldo.com`
-  so the magic reset link lands back on the app. If this page can't surface the set‑new‑password
-  form after a reset link click, that redirect is the reason.
+- The Supabase client is vendored at `assets/supabase.js`.
 - If `supabaseUrl`/`supabaseAnonKey` are emptied, the app falls back to a local PIN login.
 
-## How it stores data
-
-Two modes, controlled by `BACKEND_URL` in `js/config.js`:
-
+## Data storage
 | Mode | When | Where data lives |
 |------|------|------------------|
-| **Backend (live)** | `BACKEND_URL` set to your Apps Script `/exec` URL | Google Spreadsheet + Drive (shared, synced, protected) |
-| **Demo** | `BACKEND_URL` empty (default) | This browser only (localStorage) |
+| **Supabase (live)** | the app is wired to the Supabase client | shared project DB (people/reference via `js/live.js`) |
+| **Demo** | no Supabase / empty tables | this browser only (localStorage) |
 
-Demo mode is for testing the UI **only**. It never claims to be real tracking and shows a
-clear banner. Real tracking requires deploying the backend.
-
-## Go live (backend)
-
-1. Create a Google Spreadsheet (the database) and a Drive folder (for screenshots).
-2. Open **Extensions → Apps Script** on the spreadsheet, paste `backend/Code.gs`.
-3. Set `SPREADSHEET_ID`, `SCREENSHOT_FOLDER_ID`, and a real `ADMIN_PASSWORD` in `Code.gs`.
-4. **Deploy → New deployment → Web app**; *Execute as* = Me, *Who has access* = "Anyone
-   with Google account" (recommended) or "Anyone".
-5. Copy the `/exec` URL into `js/config.js` → `BACKEND_URL`.
-6. Run `setup()` once, then add employees via the Employees sheet or `SeedEmployees.gs`.
+Demo mode is for testing the UI **only** and always shows a clear banner.
 
 ## Privacy & transparency (by design)
-
-- Screen capture uses the browser's **explicit** screen-share permission (`getDisplayMedia`).
-  It never bypasses the picker, never runs during breaks, and stops when you revoke it.
-  If permission is denied or unsupported, **no screenshot is recorded or claimed**.
-- Activity is measured only from in-page mouse/keyboard interaction **counts** —
-  no typed content, passwords, or clipboard are ever read or stored, and it is never
-  presented as system-wide activity.
-- A visible indicator shows whenever capture/tracking is active.
-- Idle detection uses a configurable threshold; original records are preserved and idle
+- Only in-page mouse/keyboard interaction **counts** are measured — never typed
+  content, passwords, or clipboard; never presented as system-wide activity.
+- Idle detection uses a configurable threshold; original records are preserved and
   adjustments only layer on top (never silently delete time).
-
-## Browser limitations (honest)
-
-No browser can do continuous background system-wide monitoring (that needs a desktop
-agent, which we're intentionally not building). What browsers *can* do is what this app
-uses: in-page activity measurement and consented screen capture while the page is open.
-These limits are surfaced in the UI rather than faked.
+- No covert or hidden monitoring. No screen capture.

@@ -21,7 +21,6 @@ window.TT_CONFIG = {
   APP_NAME: "Time Tracker",
 
   /* Defaults (an admin can override these in the backend once live). */
-  SCREENSHOT_INTERVAL_MIN: 10,
   IDLE_THRESHOLD_MIN: 5,
 
   /* Demo-mode data expiry note. */

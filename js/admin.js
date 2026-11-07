@@ -56,7 +56,7 @@
 
   const TITLES = {
     overview: "Overview", timesheets: "Timesheets", activity: "Activity",
-    breaks: "Break Monitoring", screenshots: "Screenshots", schedule: "Schedule & Attendance",
+    breaks: "Break Monitoring", schedule: "Schedule & Attendance",
     reports: "Reports", payroll: "Payroll Reports", employees: "Employees",
     teams: "Teams", projects: "Projects & Tasks", settings: "Settings",
   };
@@ -70,7 +70,6 @@
     else if (page === "timesheets") renderTimesheets();
     else if (page === "activity") renderActivity();
     else if (page === "breaks") renderBreaks();
-    else if (page === "screenshots") renderScreenshots();
     else if (page === "schedule") renderSchedule();
     else if (page === "reports") renderReports();
     else if (page === "payroll") renderPayroll();
@@ -187,25 +186,23 @@
     activity.forEach(a => {
       if (state.empId && a.employee_id !== state.empId) return;
       if (state.from && a.bucket_at.slice(0,10) !== state.from) return;
-      if (!byEmp[a.employee_id]) byEmp[a.employee_id] = { mouse:0, keys:0, shots:0 };
+      if (!byEmp[a.employee_id]) byEmp[a.employee_id] = { mouse:0, keys:0 };
       byEmp[a.employee_id].mouse += a.mouse_events;
       byEmp[a.employee_id].keys += a.key_events;
     });
-    // shot counts
-    API._raw.screenshots.forEach(sc => { if (byEmp[sc.employee_id] && (!state.from || sc.captured_at.slice(0,10) === state.from)) byEmp[sc.employee_id].shots++; });
     const rows = Object.keys(byEmp).map(id => {
       const b = byEmp[id];
       const sessions = API._raw.sessions.filter(s => s.employee_id === id && s.status === "completed");
       const activeMs = sessions.reduce((a,s)=>a+((s.activity_pct!=null)?((new Date(s.ended_at)-new Date(s.started_at))*(s.activity_pct/100)):0),0);
       const idleMs = sessions.reduce((a,s)=>a+(s.idle_ms||0),0);
       return `<tr><td>${esc(empName(id))}</td><td>${b.mouse}</td><td>${b.keys}</td>
-        <td>${UTIL.hoursToLabel(activeMs)}</td><td>${UTIL.msToClock(idleMs)}</td><td>${avgActivity(id)}</td><td>${b.shots}</td></tr>`;
+        <td>${UTIL.hoursToLabel(activeMs)}</td><td>${UTIL.msToClock(idleMs)}</td><td>${avgActivity(id)}</td></tr>`;
     }).join("");
     body.innerHTML = `
       <p class="muted">Activity % is computed from real recorded interaction counts during eligible work time. It reflects browser/application activity only — not system-wide monitoring.</p>
       <div class="table-wrap"><table>
-        <thead><tr><th>Employee</th><th>Mouse events</th><th>Key events</th><th>Active time</th><th>Idle time</th><th>Activity %</th><th>Screenshots</th></tr></thead>
-        <tbody>${rows || "<tr><td colspan=7 class='muted'>No activity recorded in range (start a tracking session to generate data).</td></tr>"}</tbody>
+        <thead><tr><th>Employee</th><th>Mouse events</th><th>Key events</th><th>Active time</th><th>Idle time</th><th>Activity %</th></tr></thead>
+        <tbody>${rows || "<tr><td colspan=6 class='muted'>No activity recorded in range (start a tracking session to generate data).</td></tr>"}</tbody>
       </table></div>`;
     const aApply = $("aApply"); if (aApply) aApply.addEventListener("click", () => { state.from = $("aFrom").value || ""; state.empId = $("aEmp").value; renderActivity(); });
   }
@@ -248,28 +245,6 @@
         <tbody>${rows || "<tr><td colspan=10 class='muted'>No break records.</td></tr>"}</tbody>
       </table></div>`;
     const bApply=$("bApply"); if(bApply) bApply.addEventListener("click",()=>{ state.empId=$("bEmp").value; renderBreaks(); });
-  }
-
-  /* ============================ SCREENSHOTS ============================ */
-  function renderScreenshots() {
-    addHeadFilters(`<select id="sEmp">${empOptions()}</select><button class="btn" id="sApply">Apply</button>`);
-    const shots = API._raw.screenshots.slice().reverse().filter(s => !state.empId || s.employee_id === state.empId);
-    const g = shots.length ? shots.map(s => `
-      <figure class="shot"><div class="shot-img">
-        ${s.file_id && String(s.file_id).startsWith("data:") ? `<img src="${esc(s.file_id)}" alt="screenshot" />` : `<span class="shot-empty">Stored in backend (auth required)</span>`}
-      </div><figcaption>${esc(empName(s.employee_id))} · ${esc(s.captured_at.slice(0,16))} · ${s.activity_pct!=null?s.activity_pct+"%":"—"} · <a class="lbl" data-shot="${esc(s.id)}">${s.is_flagged?"⚠":"Flag"}</a></figcaption></figure>
-    `).join("") : `<p class="muted">No screenshots captured yet. Screenshots are only saved from an active, authorized tracking session after the employee grants screen-share permission.</p>`;
-    body.innerHTML = `
-      <p class="muted">Only screenshots actually captured and saved appear here; none are generated or faked.</p>
-      <div class="gallery">${g}</div>`;
-    document.querySelectorAll("[data-shot]").forEach(a => a.addEventListener("click", (e) => {
-      e.preventDefault(); const id = e.target.dataset.shot;
-      const sh = API._raw.screenshots.find(x => x.id === id);
-      if (!sh) return;
-      sh.is_flagged = !sh.is_flagged; sh.flag_note = sh.is_flagged ? "Flagged for review" : ""; API.logAudit({ action:"toggle_flag", entity:"screenshot", entity_id:id, note:sh.flag_note });
-      renderScreenshots();
-    }));
-    const sApply=$("sApply"); if(sApply) sApply.addEventListener("click",()=>{ state.empId=$("sEmp").value; renderScreenshots(); });
   }
 
   /* ============================ SCHEDULE & ATTENDANCE ============================ */
@@ -539,7 +514,6 @@
     const sessions = API._raw.sessions.filter(s=>s.employee_id===id).sort((a,b)=>b.started_at.localeCompare(a.started_at));
     const scheds = API._raw.schedules.filter(s=>s.employee_id===id);
     const att = API._raw.attendance.filter(a=>a.employee_id===id);
-    const shots = API._raw.screenshots.filter(s=>s.employee_id===id).length;
     const breaks = API._raw.breaks.filter(b=>b.employee_id===id);
     const pr = API.computePayroll({start:state.payFrom,end:state.payTo}).data.find(p=>p.employee_id===id);
     return `<div class="emp-detail card">
@@ -557,7 +531,6 @@
         {num:UTIL.hoursToLabel(sessions.filter(s=>s.status==="completed").reduce((a,s)=>a+(new Date(s.ended_at||Date.now())-new Date(s.started_at)-(s.break_ms||0)),0)),lab:"Total Tracked"},
         {num:breaks.length,lab:"Breaks"},
         {num:breaks.reduce((a,b)=>a+(b.overbreak_ms||0),0)?UTIL.msToClock(breaks.reduce((a,b)=>a+(b.overbreak_ms||0),0)):"0",lab:"Total Overbreak"},
-        {num:shots,lab:"Screenshots"},
         {num:att.length,lab:"Attendance records"},
         {num:pr?UTIL.hoursToLabel(pr.valid_rendered_hours*3600000)+" / "+pr.estimated_payable+pr.currency:"—",lab:"Pay (valid)"},
       ].map(k=>`<div class="kpi"><span class="kpi-num">${k.num}</span><span class="kpi-lab">${k.lab}</span></div>`).join("")}</div>
@@ -738,7 +711,6 @@
     const s = API.settings().data;
     body.innerHTML = `
       <div class="card" style="max-width:560px">
-        <label>Screenshot interval (minutes)<input type="number" id="setShot" value="${s.screenshotIntervalMin}" min="1"></label>
         <label>Idle threshold (minutes)<input type="number" id="setIdle" value="${s.idleThresholdMin}" min="1"></label>
         <label class="checkline"><input type="checkbox" id="setDed" ${s.deductIdleTime?"checked":""}> Deduct idle time from tracked hours</label>
         <label class="checkline"><input type="checkbox" id="setOverDed" ${s.dedCfg&&s.dedCfg.overbreakAll?"checked":""}> Deduct overbreak automatically</label>
@@ -748,7 +720,6 @@
       </div>`;
     $("saveSet").addEventListener("click", () => {
       const ns = {
-        screenshotIntervalMin: parseInt($("setShot").value,10)||10,
         idleThresholdMin: parseInt($("setIdle").value,10)||5,
         deductIdleTime: $("setDed").checked,
         dedCfg: Object.assign({}, settings.dedCfg, { overbreakAll: $("setOverDed").checked }),

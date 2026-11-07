@@ -10,7 +10,7 @@ const Store = (() => {
   const K = {
     employees: "tt.employees", projects: "tt.projects", tasks: "tt.tasks",
     sessions: "tt.sessions", breaks: "tt.breaks", activity: "tt.activity",
-    screenshots: "tt.screenshots", schedules: "tt.schedules",
+    schedules: "tt.schedules",
     attendance: "tt.attendance", payroll: "tt.payroll",
     timesheet: "tt.timesheet_entries", audit: "tt.audit_log",
     settings: "tt.settings", me: "tt.me", allowed: "tt.allowed_emails",
@@ -29,11 +29,11 @@ const Store = (() => {
       { id: "t4", project_id: "p2", name: "Outbound call", is_archived: false },
       { id: "t5", project_id: "p3", name: "Admin work", is_archived: false },
     ],
-    sessions: [], breaks: [], activity: [], screenshots: [],
+    sessions: [], breaks: [], activity: [],
     schedules: [], attendance: [], payroll: [], timesheet: [], audit: [],
     allowed: [],
     settings: {
-      screenshotIntervalMin: 10, idleThresholdMin: 5, deductIdleTime: false,
+      idleThresholdMin: 5, deductIdleTime: false,
       lateGraceMin: 5, adminPin: "admin1234", currency: "PHP",
       teams: [
         { id: "team-admin-support", name: "Admin Support" },
@@ -281,15 +281,7 @@ const Store = (() => {
   }
 
   /* ---------------- SCREENSHOTS ---------------- */
-  function recordScreenshot(shot) {
-    DB.screenshots.push({
-      id: util(), session_id: shot.session_id, employee_id: shot.empId, file_id: shot.fileId || ("data:" + shot.dataUrl),
-      captured_at: shot.ts || new Date().toISOString(), activity_pct: shot.activity_pct || null,
-      is_flagged: false, flag_note: "", flagged_by: null,
-    });
-    persist();
-    return { ok: true, data: true };
-  }
+  /* (removed — screenshot feature is disabled) */
 
   /* ---------------- SCHEDULES ---------------- */
   function listSchedules() {
@@ -509,7 +501,7 @@ const Store = (() => {
     loginSupabaseUser, adminLogin, me, refs, employees, settings, saveSettings,
     startSession, pauseSession, resumeSession, stopSession, myActive,
     startBreak, endBreak, openBreaks, breaksAll,
-    addActivity, recordScreenshot,
+    addActivity,
     listSchedules, saveSchedule, removeSchedule,
     attendanceAll, computePayroll, timesheets, reports,
     logAudit, audits, dashboard,

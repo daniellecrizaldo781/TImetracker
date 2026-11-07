@@ -111,19 +111,7 @@ create table if not exists public.activity (
 );
 create index if not exists idx_activity_emp on public.activity(employee_id, bucket_at);
 
--- SCREENSHOTS
-create table if not exists public.screenshots (
-  id           uuid primary key default gen_random_uuid(),
-  session_id   uuid references public.sessions(id) on delete cascade,
-  employee_id  uuid not null references public.employees(id) on delete cascade,
-  file_id      text not null,
-  captured_at  timestamptz not null default now(),
-  activity_pct numeric(5,2),
-  is_flagged   boolean not null default false,
-  flag_note    text not null default '',
-  flagged_by   uuid references auth.users(id)
-);
-create index if not exists idx_shots_emp on public.screenshots(employee_id, captured_at);
+-- (screenshots table removed — the screenshot feature is disabled)
 
 -- SCHEDULES
 create table if not exists public.schedules (
@@ -282,9 +270,6 @@ drop policy if exists "activity select" on public.activity;
 create policy "activity select" on public.activity for select using (employee_id = auth.uid() or is_admin());
 drop policy if exists "activity insert" on public.activity;
 create policy "activity insert" on public.activity for insert with check (employee_id = auth.uid());
-
-drop policy if exists "screenshots admin" on public.screenshots;
-create policy "screenshots admin" on public.screenshots for all using (is_admin()) with check (is_admin());
 
 drop policy if exists "schedules select" on public.schedules;
 create policy "schedules select" on public.schedules for select using (employee_id = auth.uid() or is_admin());

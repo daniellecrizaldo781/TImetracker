@@ -106,9 +106,6 @@ input[type="date"] { width: auto; margin-top: 0; }
 .idle-on b, .idle-on { color: var(--warn); }
 .controls { margin-top: 24px; }
 .controls .btn-row { justify-content: center; }
-.capture-card { margin-top: 16px; }
-
-.preview-video { width: 100%; max-width: 320px; border-radius: 8px; border: 2px solid var(--primary); margin-bottom: 8px; }
 
 /* Admin */
 .dash-main { max-width: 1120px; margin: 0 auto; padding: 20px 24px 80px; }
@@ -132,10 +129,6 @@ tbody tr:hover { background: #f8fafc; }
 h2 { margin: 22px 0 10px; font-size: 18px; }
 
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 14px; }
-.shot { margin: 0; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.shot-img img { width: 100%; display: block; }
-.shot-empty { display: block; padding: 30px 10px; color: var(--muted); font-size: 12px; text-align: center; }
-.shot figcaption { padding: 8px; font-size: 12px; color: var(--muted); }
 
 .project { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 10px; }
 .project h4 { margin: 0 0 8px; }
