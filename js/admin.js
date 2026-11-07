@@ -472,6 +472,7 @@
   function renderEmployees() {
     addHeadFilters(`<select id="eEmp">${empOptions()}</select><select id="eTeam">${teamOptions()}</select><button class="btn" id="eApply">Apply</button>`);
     const empList = API._raw.employees.filter(e => e.is_active && (!state.teamId || e.team === state.teamId));
+    const teams = API.settings().data.teams || [];
     const rows = empList.map(e => {
       const s = API._raw.sessions.filter(x => x.employee_id === e.id && x.status === "completed");
       const tracked = s.reduce((a,x)=>a+(new Date(x.ended_at)-new Date(x.started_at)-(x.break_ms||0)),0);
@@ -485,10 +486,36 @@
       </tr>`;
     }).join("");
     body.innerHTML = `
+      <div class="card sched-form">
+        <h3>Add employee</h3>
+        <div class="sched-form-grid">
+          <label>Full name <input type="text" id="aeName" placeholder="e.g. Juan Dela Cruz"></label>
+          <label>Email <input type="email" id="aeEmail" placeholder="juan@oricle.com"></label>
+          <label>Role <select id="aeRole"><option value="employee">employee</option><option value="admin">admin</option></select></label>
+          <label>Team <select id="aeTeam"><option value="">No team</option>${teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")}</select></label>
+          <label>Hourly rate <input type="number" id="aeRate" value="0" min="0" step="0.01"></label>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="aeSave">+ Add employee</button>
+          <button class="btn" id="aeClear">Clear</button>
+        </div>
+        <p id="aeMsg" class="msg" hidden></p>
+      </div>
       <div class="table-wrap"><table>
         <thead><tr><th>Name</th><th>Email</th><th>Team</th><th>Role</th><th>Rate</th><th>Tracked</th><th>Activity</th><th>Valid Work</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
       ${state.empId ? employeeDetail(state.empId) : "<p class='muted'>Click an employee row for full profile.</p>"}`;
+    // add employee
+    const aeSave = $("aeSave");
+    if (aeSave) aeSave.addEventListener("click", () => {
+      const name = ($("aeName").value||"").trim(), email = ($("aeEmail").value||"").trim();
+      const m = $("aeMsg");
+      const r = API.addEmployee({ full_name: name, email: email, role: $("aeRole").value, team: $("aeTeam").value, hourly_rate: parseFloat($("aeRate").value)||0 });
+      m.textContent = r.ok ? `Added ${name}.` : (r.error||"Error");
+      m.classList.toggle("ok", r.ok); m.classList.toggle("error", !r.ok); m.hidden=false;
+      if (r.ok) { $("aeName").value=""; $("aeEmail").value=""; $("aeRate").value="0"; rerenderEmpIndex(); renderEmployees(); }
+    });
+    const aeClear=$("aeClear"); if(aeClear) aeClear.addEventListener("click", ()=>{ $("aeName").value=""; $("aeEmail").value=""; $("aeRate").value="0"; });
     // team quick-assign
     document.querySelectorAll(".emp-team-sel").forEach(sel => sel.addEventListener("change", () => {
       API.assignTeam(sel.dataset.eid, sel.value);
@@ -626,11 +653,79 @@
   function renderProjects() {
     const projects = API._raw.projects;
     const tasks = API._raw.tasks;
-    const rows = projects.map(p => {
-      const ts = tasks.filter(t => t.project_id === p.id);
-      return `<div class="project"><h4>${esc(p.name)}</h4><ul>${ts.map(t=>`<li>${esc(t.name)}</li>`).join("")||"<li class='muted'>No tasks</li>"}</ul></div>`;
+    const cards = projects.map(p => {
+      const pts = tasks.filter(t => t.project_id === p.id);
+      return `<div class="project" data-pid="${esc(p.id)}">
+        <div class="team-head">
+          <h4 data-pid="${esc(p.id)}" class="proj-name">${esc(p.name)}</h4>
+          <div class="btn-row-inline" style="margin:0">
+            <button class="btn ghost proj-edit" data-pid="${esc(p.id)}" data-name="${esc(p.name)}">Edit</button>
+            <button class="btn danger proj-del" data-pid="${esc(p.id)}">✕</button>
+          </div>
+        </div>
+        <ul class="task-list" data-pid="${esc(p.id)}">
+          ${pts.map(t=>`<li class="task-item" data-tid="${esc(t.id)}">
+            <span class="task-name" data-tid="${esc(t.id)}">${esc(t.name)}</span>
+            <span class="task-actions">
+              <button class="lbl task-edit" data-tid="${esc(t.id)}" data-tax="${esc(t.name)}">edit</button>
+              <button class="lbl task-del" data-tid="${esc(t.id)}">✕</button>
+            </span>
+          </li>`).join("") || "<li class='muted'>No tasks</li>"}
+        </ul>
+        <div class="btn-row-inline" style="margin-top:8px">
+          <input type="text" class="new-task-input" data-pid="${esc(p.id)}" placeholder="New task name" style="max-width:180px;display:inline-block;margin:0">
+          <button class="btn task-add" data-pid="${esc(p.id)}">+ Add task</button>
+        </div>
+      </div>`;
     }).join("");
-    body.innerHTML = `<div class="proj-grid">${rows}</div>`;
+    body.innerHTML = `
+      <div class="card sched-form">
+        <h3>Add project</h3>
+        <div class="btn-row" style="margin:0">
+          <input type="text" id="npName" placeholder="New project name" style="max-width:280px;display:inline-block;margin:0">
+          <button class="btn primary" id="npSave">+ Add project</button>
+        </div>
+        <p id="npMsg" class="msg" hidden></p>
+      </div>
+      <div class="proj-grid" style="margin-top:12px">${cards}</div>`;
+
+    // add project
+    const npSave=$("npSave");
+    if (npSave) npSave.addEventListener("click", () => {
+      const v = ($("npName").value||"").trim();
+      const m=$("npMsg");
+      const r=v ? API.addProject(v) : {ok:false,error:"Enter a project name."};
+      m.textContent = r.ok ? `Added "${v}".` : (r.error||"Error");
+      m.classList.toggle("ok", r.ok); m.classList.toggle("error", !r.ok); m.hidden=false;
+      if (r.ok) { $("npName").value=""; projectsIndex[r.data.id]=r.data.name; renderProjects(); }
+    });
+
+    // project edit/delete
+    document.querySelectorAll(".proj-edit").forEach(b => b.addEventListener("click", () => {
+      const name = prompt("Rename project:", b.dataset.name);
+      if (name && name.trim()) { API.updateProject(b.dataset.pid, { name: name.trim() }); projectsIndex[b.dataset.pid]=name.trim(); renderProjects(); }
+    }));
+    document.querySelectorAll(".proj-del").forEach(b => b.addEventListener("click", () => {
+      if (confirm("Delete this project and its tasks?")) { API.removeProject(b.dataset.pid); renderProjects(); }
+    }));
+
+    // add task
+    document.querySelectorAll(".task-add").forEach(btn => btn.addEventListener("click", () => {
+      const input = document.querySelector(`.new-task-input[data-pid="${btn.dataset.pid}"]`);
+      const v = (input && input.value || "").trim();
+      if (!v) return;
+      API.addTask(btn.dataset.pid, v);
+      renderProjects();
+    }));
+    // task edit
+    document.querySelectorAll(".task-edit").forEach(b => b.addEventListener("click", () => {
+      const name = prompt("Rename task:", b.dataset.tax);
+      if (name && name.trim()) { API.updateTask(b.dataset.tid, { name: name.trim() }); renderProjects(); }
+    }));
+    // task delete
+    document.querySelectorAll(".task-del").forEach(b => b.addEventListener("click", () => {
+      if (confirm("Delete this task?")) { API.removeTask(b.dataset.tid); renderProjects(); }
+    }));
   }
 
   /* ============================ SETTINGS ============================ */

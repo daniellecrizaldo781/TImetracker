@@ -132,6 +132,55 @@ const Store = (() => {
     // keep in-memory index in sync via refetch on UI side
     return { ok: true, data: e };
   }
+  function addEmployee(rec) {
+    if (!rec || !rec.full_name || !rec.email) return { ok: false, error: "Name and email are required." };
+    if (empByEmail(rec.email)) return { ok: false, error: "An employee with that email already exists." };
+    const e = {
+      id: util(), email: rec.email, full_name: rec.full_name, role: rec.role || "employee",
+      hourly_rate: Number(rec.hourly_rate) || 0, currency: rec.currency || DB.settings.currency,
+      team: rec.team || "", is_active: rec.is_active !== false, created_at: new Date().toISOString(),
+    };
+    DB.employees.push(e);
+    persist();
+    return { ok: true, data: e };
+  }
+
+  /* ---------------- PROJECTS & TASKS ---------------- */
+  function addProject(name) {
+    name = (name || "").trim();
+    if (!name) return { ok: false, error: "Project name is required." };
+    if (DB.projects.some(p => p.name.toLowerCase() === name.toLowerCase())) return { ok: false, error: "Project already exists." };
+    const p = { id: util(), name: name, is_archived: false, created_at: new Date().toISOString() };
+    DB.projects.push(p); persist(); return { ok: true, data: p };
+  }
+  function updateProject(id, patch) {
+    const p = DB.projects.find(x => x.id === id);
+    if (!p) return { ok: false, error: "Project not found." };
+    Object.assign(p, patch); if (patch.name) p.name = String(patch.name).trim();
+    persist(); return { ok: true, data: p };
+  }
+  function removeProject(id) {
+    DB.projects = DB.projects.filter(p => p.id !== id);
+    DB.tasks = DB.tasks.filter(t => t.project_id !== id);
+    persist(); return { ok: true };
+  }
+  function addTask(projectId, name) {
+    name = (name || "").trim();
+    if (!name) return { ok: false, error: "Task name is required." };
+    if (!DB.projects.find(p => p.id === projectId)) return { ok: false, error: "Project not found." };
+    const t = { id: util(), project_id: projectId, name: name, is_archived: false };
+    DB.tasks.push(t); persist(); return { ok: true, data: t };
+  }
+  function updateTask(id, patch) {
+    const t = DB.tasks.find(x => x.id === id);
+    if (!t) return { ok: false, error: "Task not found." };
+    Object.assign(t, patch); if (patch.name) t.name = String(patch.name).trim();
+    persist(); return { ok: true, data: t };
+  }
+  function removeTask(id) {
+    DB.tasks = DB.tasks.filter(t => t.id !== id);
+    persist(); return { ok: true };
+  }
 
   /* ---------------- SESSIONS ---------------- */
   function startSession(empId, project, task, meta) {
@@ -465,6 +514,7 @@ const Store = (() => {
     attendanceAll, computePayroll, timesheets, reports,
     logAudit, audits, dashboard,
     teams, addTeam, removeTeam, renameTeam, assignTeam, updateEmployee,
+    addEmployee, addProject, updateProject, removeProject, addTask, updateTask, removeTask,
     _raw: DB, findEmp, nameOf,
   };
 })();

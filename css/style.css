@@ -210,6 +210,15 @@ figcaption.cal-empty, .cal-empty { }
 .shift-actions { display: flex; gap: 8px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
 .shift-actions .lbl { font-size: 11px; margin: 0; }
 
+/* project / task editing */
+.task-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
+.task-actions { display: flex; gap: 8px; align-items: center; }
+.task-actions .lbl { margin: 0; }
+.new-task-input, .sched-form-grid input { margin-top: 0; }
+.team-head .btn-row-inline .btn { margin: 0; }
+.project .btn-row-inline input { margin: 0; vertical-align: middle; }
+.project .btn-row-inline .btn { margin: 0; vertical-align: middle; }
+
 /* break UI */
 .break-picker { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
 .break-opt { flex: 1; min-width: 120px; }
