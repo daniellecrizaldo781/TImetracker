@@ -1,12 +1,10 @@
 {
-  "_comment": "Time Tracker Desktop Agent config. Fill real values; do NOT commit secrets.",
+  "_comment": "Time Tracker Desktop Agent config (ACTIVE APP tracking, Option A). Fill real values; do NOT commit secrets.",
   "supabaseUrl": "https://cnzsfbxixcfzaegayvpp.supabase.co",
   "supabaseAnonKey": "sb_publishable_YOUR_KEY_HERE",
-  "storageBucket": "screenshots",
   "employeeId": "REPLACE_WITH_SUPABASE_EMPLOYEE_UUID",
-  "captureIntervalSeconds": 600,
-  "jpgQuality": 70,
-  "queueDir": "C:\\tt-agent-queue",
+  "sampleIntervalSeconds": 60,
   "logFile": "C:\\tt-agent\\agent.log",
-  "enabled": true
+  "enabled": true,
+  "maxAppsLog": 4
 }

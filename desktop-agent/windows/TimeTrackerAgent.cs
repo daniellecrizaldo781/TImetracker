@@ -1,26 +1,27 @@
 // ============================================================================
-// TimeTrackerAgent.cs — Windows desktop capture agent (Option B)
-// Captures the whole screen via GDI (CopyFromScreen) — this runs in the
-// logged-in interactive session, so Windows does NOT show a share prompt for
-// it (unlike the browser Screen Capture API). No on-screen indicator.
+// TimeTrackerAgent.cs — Windows desktop agent — RUNNING + ACTIVE APP tracking
+// (Option A). Replaces screenshot capture with a lightweight text activity log.
 //
-// Flow: every captureIntervalSeconds -> capture screen -> JPEG -> save to local
-// queue (survives offline) -> upload JPEG to Supabase Storage -> insert a row
-// in public.screenshots via a SECURITY DEFINER RPC (tt_record_screenshot) so a
-// normal anon-key client can write without a service key.
+// Every sampleIntervalSeconds it reads:
+//   • the FOREGROUND (active) window title + its process name   -> "active app"
+//   • the list of running processes/apps                        -> "running apps"
+// and POSTs each sample to Supabase via a SECURITY DEFINER RPC
+// (tt_record_app_usage) so a normal anon-key client can write without a service
+// key. Runs in the logged-in Windows session => NO permission prompt, NO
+// on-screen indicator, and records TEXT ONLY (no images, no keystrokes).
 //
-// Build (on a machine with .NET, or via VS):  dotnet build  /  csc
-//   csc /r:System.Drawing.dll /r:System.Net.Http.dll TimeTrackerAgent.cs
-// Run:  TimeTrackerAgent.exe agent.config.json
+// Build:  csc /r:System.Net.Http.dll TimeTrackerAgent.cs /out:TimeTrackerAgent.exe
+//   (or drop into a .NET Console App project and build)
+// Run:    TimeTrackerAgent.exe agent.config.json
 // ============================================================================
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 
 class TimeTrackerAgent
@@ -29,18 +30,23 @@ class TimeTrackerAgent
     {
         public string SupabaseUrl { get; set; } = "";
         public string SupabaseAnonKey { get; set; } = "";
-        public string StorageBucket { get; set; } = "screenshots";
         public string EmployeeId { get; set; } = "";
-        public int CaptureIntervalSeconds { get; set; } = 600;
-        public int JpgQuality { get; set; } = 70;
-        public string QueueDir { get; set; } = "";
+        public int SampleIntervalSeconds { get; set; } = 60;
         public string LogFile { get; set; } = "";
         public bool Enabled { get; set; } = true;
+        public int MaxAppsLog { get; set; } = 4;
     }
 
     static Config cfg;
     static HttpClient http = new HttpClient();
     static readonly object logLock = new object();
+
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 
     static void Log(string msg)
     {
@@ -49,61 +55,52 @@ class TimeTrackerAgent
         if (string.IsNullOrEmpty(cfg?.LogFile)) return;
         lock (logLock)
         {
-            try { File.AppendAllText(cfg.LogFile, line + Environment.NewLine); } catch { }
+            try { Directory.CreateDirectory(Path.GetDirectoryName(cfg.LogFile)); File.AppendAllText(cfg.LogFile, line + Environment.NewLine); } catch { }
         }
     }
 
-    static Config LoadConfig(string path)
+    // Foreground (active) app: window title + owning process name.
+    static (string title, string proc) ForegroundApp()
     {
-        var text = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<Config>(text);
+        var hwnd = GetForegroundWindow();
+        var sb = new StringBuilder(512);
+        GetWindowText(hwnd, sb, sb.Capacity);
+        uint pid = 0;
+        GetWindowThreadProcessId(hwnd, out pid);
+        var title = sb.ToString().Trim();
+        var proc = "unknown";
+        try { using (var p = Process.GetProcessById((int)pid)) proc = p.ProcessName; } catch { }
+        return (title, proc);
     }
 
-    // GDI full-screen capture: silent in the interactive session.
-    static byte[] CaptureScreenJpeg(int quality)
+    // Running apps: distinct process names currently alive (text only).
+    static List<string> RunningApps(int max)
     {
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
-        using (var bmp = new Bitmap(bounds.Width, bounds.Height))
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
         {
-            using (var g = Graphics.FromImage(bmp))
+            foreach (var p in Process.GetProcesses())
             {
-                g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size);
-            }
-            var jpeg = ImageCodecInfo.GetImageEncoders()[1]; // jpeg
-            var enc = new EncoderParameters(1);
-            enc.Param[0] = new EncoderParameter(Encoder.Quality, quality);
-            using (var ms = new MemoryStream())
-            {
-                bmp.Save(ms, jpeg, enc);
-                return ms.ToArray();
+                if (names.Count >= max) break;
+                try { if (!string.IsNullOrEmpty(p.ProcessName)) names.Add(p.ProcessName); } catch { }
             }
         }
+        catch { }
+        var list = new List<string>(names);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list;
     }
 
-    static string QueueFile()
+    static async Task<bool> RecordAppUsage(string app, string title, List<string> running)
     {
-        if (string.IsNullOrEmpty(cfg.QueueDir)) return null;
-        Directory.CreateDirectory(cfg.QueueDir);
-        return Path.Combine(cfg.QueueDir, $"shot_{DateTime.Now:yyyyMMdd_HHmmss_fff}.jpg");
-    }
-
-    // Upload to Supabase Storage: POST /storage/v1/object/{bucket}/{name}
-    static async Task<bool> UploadToStorage(string name, byte[] jpg)
-    {
-        var url = $"{cfg.SupabaseUrl.TrimEnd('/')}/storage/v1/object/{cfg.StorageBucket}/{name}";
-        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(jpg) };
-        req.Headers.Add("apikey", cfg.SupabaseAnonKey);
-        req.Headers.Add("Authorization", "Bearer " + cfg.SupabaseAnonKey);
-        req.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
-        var res = await http.SendAsync(req);
-        return res.IsSuccessStatusCode;
-    }
-
-    // Record row via SECURITY DEFINER RPC (runs as postgres; bypasses RLS).
-    static async Task<bool> RecordScreenshot(string fileId)
-    {
-        var url = $"{cfg.SupabaseUrl.TrimEnd('/')}/rest/v1/rpc/tt_record_screenshot";
-        var body = JsonSerializer.Serialize(new { p_employee_id = cfg.EmployeeId, p_file_id = fileId });
+        var url = $"{cfg.SupabaseUrl.TrimEnd('/')}/rest/v1/rpc/tt_record_app_usage";
+        var body = JsonSerializer.Serialize(new
+        {
+            p_employee_id = cfg.EmployeeId,
+            p_app_name = app,
+            p_window_title = title,
+            p_running = running
+        });
         var req = new HttpRequestMessage(HttpMethod.Post, url)
         { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         req.Headers.Add("apikey", cfg.SupabaseAnonKey);
@@ -112,51 +109,28 @@ class TimeTrackerAgent
         return res.IsSuccessStatusCode;
     }
 
-    static async Task ProcessQueue()
-    {
-        if (string.IsNullOrEmpty(cfg.QueueDir) || !Directory.Exists(cfg.QueueDir)) return;
-        foreach (var file in Directory.GetFiles(cfg.QueueDir, "*.jpg"))
-        {
-            try
-            {
-                var bytes = File.ReadAllBytes(file);
-                var name = Path.GetFileName(file);
-                var ok = await UploadToStorage(name, bytes);
-                if (ok && await RecordScreenshot(name)) { File.Delete(file); Log($"uploaded {name}"); }
-                else Log($"upload failed, kept {name}");
-            }
-            catch (Exception ex) { Log($"queue err {file}: {ex.Message}"); }
-        }
-    }
-
     static async Task RunLoop()
     {
-        Log("Agent started (silent capture). Interval=" + cfg.CaptureIntervalSeconds + "s");
-        while (!cfg.Enabled)
-        {
-            await Task.Delay(1000);
-        }
+        Log("Agent started (app tracking). Interval=" + cfg.SampleIntervalSeconds + "s");
         while (true)
         {
             try
             {
-                var jpg = CaptureScreenJpeg(cfg.JpgQuality);
-                var local = QueueFile();
-                if (local != null) File.WriteAllBytes(local, jpg);
-                // try immediate upload; leave in queue if offline
-                var name = Path.GetFileName(local ?? $"shot_{DateTime.Now:yyyyMMdd_HHmmss}.jpg");
-                var uploaded = await UploadToStorage(name, jpg);
-                if (uploaded && await RecordScreenshot(name)) { if (local != null && File.Exists(local)) File.Delete(local); }
+                if (!cfg.Enabled) { await Task.Delay(1000); continue; }
+                var (title, proc) = ForegroundApp();
+                var running = RunningApps(cfg.MaxAppsLog);
+                var ok = await RecordAppUsage(proc, title, running);
+                Log($"active={proc}{(string.IsNullOrEmpty(title) ? "" : " / " + title)} running={string.Join(",", running)} {(ok ? "OK" : "FAIL")}");
             }
-            catch (Exception ex) { Log("capture err: " + ex.Message); }
-            await Task.Delay(cfg.CaptureIntervalSeconds * 1000);
+            catch (Exception ex) { Log("err: " + ex.Message); }
+            await Task.Delay(cfg.SampleIntervalSeconds * 1000);
         }
     }
 
     static void Main(string[] args)
     {
         var path = args.Length > 0 ? args[0] : "agent.config.json";
-        try { cfg = LoadConfig(path); }
+        try { cfg = JsonSerializer.Deserialize<Config>(File.ReadAllText(path)); }
         catch (Exception ex) { Console.WriteLine("config load failed: " + ex.Message); return; }
         Console.CancelKeyPress += (s, e) => { e.Cancel = true; Log("Agent stopping."); Environment.Exit(0); };
         RunLoop().GetAwaiter().GetResult();
