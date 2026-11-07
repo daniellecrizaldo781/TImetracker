@@ -72,17 +72,27 @@
     document.querySelectorAll(".nav-item").forEach(n => n.style.fontWeight = n.dataset.page === page ? "700" : "400");
     titleEl.textContent = TITLES[page] || page;
     headFilters.innerHTML = "";
-    if (page === "overview") renderOverview();
-    else if (page === "timesheets") renderTimesheets();
-    else if (page === "activity") renderActivity();
-    else if (page === "breaks") renderBreaks();
-    else if (page === "schedule") renderSchedule();
-    else if (page === "reports") renderReports();
-    else if (page === "payroll") renderPayroll();
-    else if (page === "employees") renderEmployees();
-    else if (page === "teams") renderTeams();
-    else if (page === "projects") renderProjects();
-    else if (page === "settings") renderSettings();
+    // A single rendering error must never kill navigation — wrap each render and
+    // surface the error in the page body so we can SEE why a page fails.
+    var render = null;
+    if (page === "overview") render = renderOverview;
+    else if (page === "timesheets") render = renderTimesheets;
+    else if (page === "activity") render = renderActivity;
+    else if (page === "breaks") render = renderBreaks;
+    else if (page === "schedule") render = renderSchedule;
+    else if (page === "reports") render = renderReports;
+    else if (page === "payroll") render = renderPayroll;
+    else if (page === "employees") render = renderEmployees;
+    else if (page === "teams") render = renderTeams;
+    else if (page === "projects") render = renderProjects;
+    else if (page === "settings") render = renderSettings;
+    if (render) {
+      try { render(); }
+      catch (e) {
+        console.error("render [" + page + "] failed:", e);
+        body.innerHTML = `<p class="muted" style="color:var(--danger)">This page hit an error: <b>${esc(String(e.message || e))}</b>. The rest of the dashboard still works — here's the tech detail: ${esc(String(e.stack||e))}</p>`;
+      }
+    }
   }
 
   function addHeadFilters(html) {
