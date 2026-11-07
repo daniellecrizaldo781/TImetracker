@@ -9,7 +9,20 @@
 <body>
 <div id="demoBanner" class="demo-banner" hidden></div>
 
-<!-- Login -->
+<!-- Supabase auth overlay (same login as Team Dashboard) -->
+<div id="authOverlay" class="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-title">⏱ Admin Dashboard</div>
+    <div class="auth-sub">Sign in with your approved email</div>
+    <input id="authEmail" type="email" placeholder="you@oricle.com" autocomplete="email" />
+    <input id="authPass" type="password" placeholder="Password" autocomplete="current-password" />
+    <button id="authSend">Sign in</button>
+    <button id="authReset" class="auth-reset">Forgot password?</button>
+    <div id="authMsg" class="auth-msg"></div>
+  </div>
+</div>
+
+<!-- Login (shown only if Supabase is NOT configured) -->
 <div id="loginView" class="view hidden">
   <div class="card login-card">
     <h1 class="brand">⏱ Admin Dashboard</h1>
@@ -125,6 +138,8 @@
 <script src="js/util.js"></script>
 <script src="js/localstore.js"></script>
 <script src="js/api.js"></script>
+<script src="assets/supabase.js"></script>
+<script src="js/auth.js"></script>
 <script src="js/admin.js"></script>
 </body>
 </html>

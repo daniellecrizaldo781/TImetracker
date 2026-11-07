@@ -8,9 +8,16 @@
  *  - Leave "" to run in DEMO MODE: all tracking is stored only in this
  *    browser (localStorage) and is NOT synced to any server. DEMO MODE is
  *    for testing the UI only — it is never presented as real tracking.
+ *    Login is still real (Supabase).
  * ========================================================================= */
 window.TT_CONFIG = {
+  /* ---- Supabase auth (same project as the Team Dashboard) ---- */
+  supabaseUrl: 'https://azkcfwfsznqwrwaaaltp.supabase.co',
+  supabaseAnonKey: 'sb_publishable_TocTfURGWstJCWhCMb7flA_obIbU_Q9',
+
+  /* ---- tracking data backend ---- */
   BACKEND_URL: "",
+
   APP_NAME: "Time Tracker",
 
   /* Defaults (an admin can override these in the backend once live). */

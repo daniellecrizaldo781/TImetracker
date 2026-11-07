@@ -47,6 +47,12 @@ const API = (() => {
       if (isDemo()) return LocalStore.employeeLogin(email, pin);
       return backendCall("employeeLogin", { email, pin });
     },
+    /* Called after Supabase auth succeeds — finds/creates the employee record
+       for that email and signs them into the data layer. */
+    supabaseLogin(email, meta) {
+      if (isDemo()) return LocalStore.loginSupabaseUser(email, meta);
+      return backendCall("employeeLogin", { email, pin: "sso:" + (meta && meta.sessionId || "") });
+    },
     adminLogin(password) {
       if (isDemo()) return LocalStore.adminLogin(password);
       return backendCall("adminLogin", { password });

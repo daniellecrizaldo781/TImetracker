@@ -9,6 +9,20 @@ app, no installer, no executable. Employees and admins use it over the web.
   tracked hours, activity %, screenshot gallery, timesheets, daily/weekly/monthly reports,
   projects, settings, and filters (employee, status, date).
 
+## Login (Supabase — same as the Team Dashboard)
+
+Login is **email + password on the shared Supabase project**, gated by the same
+`allowed_emails` allow-list table as the Team Dashboard. An employee is admitted only if
+their email is approved in that table. "Forgot password?" sends a Supabase reset email.
+
+- Credentials live in `js/config.js` (`supabaseUrl`, `supabaseAnonKey`).
+- The Supabase client is vendored at `assets/supabase.js` (copied from the Team Dashboard).
+- **Reset-password redirect:** in the Supabase dashboard (Authentication → URL
+  Configuration), set "Redirect URLs" to include `https://timetracker.daniellecrizaldo.com`
+  so the magic reset link lands back on the app. If this page can't surface the set‑new‑password
+  form after a reset link click, that redirect is the reason.
+- If `supabaseUrl`/`supabaseAnonKey` are emptied, the app falls back to a local PIN login.
+
 ## How it stores data
 
 Two modes, controlled by `BACKEND_URL` in `js/config.js`:

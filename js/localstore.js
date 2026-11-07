@@ -73,9 +73,25 @@ const LocalStore = (() => {
     const emp = findEmp(email);
     if (!emp) return Promise.resolve({ ok: false, error: "Employee not found." });
     if (emp.pin !== pin) return Promise.resolve({ ok: false, error: "Incorrect PIN." });
-    DB.me = { role: "employee", empEmail: emp.email };
+    DB.me = { role: "employee", empEmail: emp.email, name: emp.name };
     persist();
-    return Promise.resolve({ ok: true, data: { role: "employee", empEmail: emp.email } });
+    return Promise.resolve({ ok: true, data: { role: "employee", empEmail: emp.email, name: emp.name } });
+  }
+
+  /* Post-Supabase-login identity: find or create an employee record for the
+     authenticated email, then sign that employee in locally. */
+  function loginSupabaseUser(email, ssoMeta) {
+    var cur = findEmp(email);
+    var record;
+    if (cur) { record = cur; }
+    else {
+      var name = (ssoMeta && ssoMeta.name) || email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+      record = { email: email, name: name, pin: "", active: true };
+      DB.employees.push(record);
+    }
+    DB.me = { role: "employee", empEmail: record.email, name: record.name };
+    persist();
+    return Promise.resolve({ ok: true, data: { role: "employee", empEmail: record.email, name: record.name } });
   }
   function adminLogin(password) {
     if (password !== DB.settings.adminPin) return Promise.resolve({ ok: false, error: "Incorrect admin password." });
@@ -249,6 +265,7 @@ const LocalStore = (() => {
     employeeLogin, adminLogin, me, getProjectsTasks, getEmployees, getSettings,
     saveSettings, startSession, pauseSession, resumeSession, stopSession,
     myActiveSession, recordScreenshot, dashboard, timesheets, reports, screenshots,
+    loginSupabaseUser,
     _raw: DB,
   };
 })();

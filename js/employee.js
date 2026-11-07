@@ -26,6 +26,7 @@
     project: $("projectSelect"), task: $("taskSelect"),
     start: $("startBtn"), pause: $("pauseBtn"), resume: $("resumeBtn"), stop: $("stopBtn"),
     trackerMsg: $("trackerMsg"), demoBanner: $("demoBanner"),
+    userEmail: $("userEmail"),
     captureExplain: $("captureExplain"), capturePreview: $("capturePreview"),
     captureOn: $("captureOnBtn"), captureOff: $("captureOffBtn"), captureMsg: $("captureMsg"),
     logoutBtn: $("logoutBtn"),
@@ -62,6 +63,15 @@
     if (!res.ok) { setMsg(el.loginMsg, res.error, "error"); return; }
     me = res.data;
     setMsg(el.loginMsg, "");
+    await enterTracker();
+  }
+
+  /* Supabase-gate passed: sign the email into the data layer, then enter. */
+  async function ssoEnter(email) {
+    const res = await API.supabaseLogin(email, { name: AUTH.getUser ? (AUTH.getUser().user_metadata && AUTH.getUser().user_metadata.full_name) : null });
+    if (!res.ok) { return; }
+    me = res.data;
+    if (el.userEmail) el.userEmail.textContent = email;
     await enterTracker();
   }
 
@@ -276,12 +286,17 @@
     me = null; currentSession = null;
     if (elapsedTimer) clearInterval(elapsedTimer);
     el.email.value = ""; el.pin.value = "";
-    showView("login");
+    if (window.AUTH && AUTH.enabled()) {
+      // Supabase gate re-shows the overlay on next load.
+      try { await AUTH.signOut(); } catch (e) {}
+      showView("login");
+    } else {
+      showView("login");
+    }
   }
 
   /* ---------------- wiring ---------------- */
   async function init() {
-    showView("login");
     el.brandName.textContent = CFG.APP_NAME;
     el.trackerBrand.textContent = CFG.APP_NAME;
     bindDemoBanner();
@@ -307,6 +322,15 @@
         currentSession = r.data; refreshUI();
       }
     }, 15000);
+
+    // Auth mode: Supabase gate (primary) or local PIN login (fallback).
+    if (window.AUTH && AUTH.enabled()) {
+      showView("login");
+      AUTH.setOnAuthorized(function (email) { ssoEnter(email); });
+      // AUTH.gate() runs at load (in auth.js) and shows the overlay when needed.
+    } else {
+      showView("login");
+    }
   }
 
   init();

@@ -46,6 +46,12 @@
     await enterDash();
   }
 
+  /* Supabase-gate passed: any approved email may view the admin page
+     (same access model as the Team Dashboard: the 'allowed_emails' list). */
+  async function ssoEnter(email) {
+    await enterDash();
+  }
+
   async function enterDash() {
     if (API.isDemo()) {
       el.demoBanner.hidden = false;
@@ -202,6 +208,7 @@
 
   async function logout() {
     me = null; showView("login"); el.pass.value = "";
+    if (window.AUTH && AUTH.enabled()) { try { await AUTH.signOut(); } catch (e) {} }
   }
 
   function init() {
@@ -213,7 +220,13 @@
     document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
     document.querySelectorAll("[data-report]").forEach(b => b.addEventListener("click", () => renderReports(b.dataset.report)));
     setInterval(() => { if (!el.dash.classList.contains("hidden")) loadAll(); }, 15000);
-    showView("login");
+    // Auth mode: Supabase gate (primary) or local admin password (fallback).
+    if (window.AUTH && AUTH.enabled()) {
+      showView("login");
+      AUTH.setOnAuthorized(function (email) { ssoEnter(email); });
+    } else {
+      showView("login");
+    }
   }
   init();
 })();
