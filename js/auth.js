@@ -31,9 +31,14 @@
 
   function isAllowed(email) {
     if (!email) return Promise.resolve(false);
-    return sb.from('allowed_emails').select('email').eq('email', String(email).toLowerCase()).maybeSingle()
+    // Authorize from the employees table: any registered Supabase user whose
+    // employee record has role = 'admin' (and is active) may sign in. The
+    // allowed_emails allow-list is no longer required — the admin grant in the
+    // schema (insert into employees ... role 'admin') is the single source of truth.
+    return sb.from('employees').select('email,role,is_active')
+      .eq('email', String(email).toLowerCase()).eq('role', 'admin').eq('is_active', true).maybeSingle()
       .then(function (r) {
-        if (r.error) { console.error('allowed check', r.error.message); return false; }
+        if (r.error) { console.error('authorized check', r.error.message); return false; }
         return !!r.data;
       });
   }
