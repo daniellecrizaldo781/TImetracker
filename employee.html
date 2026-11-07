@@ -74,6 +74,20 @@
       <p id="trackerMsg" class="msg" hidden></p>
     </section>
 
+    <!-- Break management -->
+    <section class="card break-card" id="breakCard" hidden>
+      <h3>Break</h3>
+      <div class="break-picker" id="breakPicker">
+        <button class="btn break-opt" data-break="first">First Break · 15m</button>
+        <button class="btn break-opt" data-break="second">Second Break · 15m</button>
+        <button class="btn break-opt" data-break="restroom">Restroom · 5m</button>
+        <button class="btn break-opt" data-break="lunch">Lunch · 60m</button>
+      </div>
+      <div id="breakStatus" class="break-status" hidden></div>
+      <div id="breakCountdown" class="break-countdown" hidden></div>
+      <div id="breakRemaining" class="break-remaining muted"></div>
+    </section>
+
     <!-- Capture status -->
     <section class="card capture-card">
       <h3>Screen capture</h3>
@@ -94,7 +108,7 @@
 
 <script src="js/config.js"></script>
 <script src="js/util.js"></script>
-<script src="js/localstore.js"></script>
+<script src="js/store.js"></script>
 <script src="js/api.js"></script>
 <script src="assets/supabase.js"></script>
 <script src="js/auth.js"></script>

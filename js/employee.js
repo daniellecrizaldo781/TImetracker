@@ -1,42 +1,42 @@
 /* =========================================================================
- * TT - Employee page logic
+ * TT - Employee page logic (+ break management)
  * ========================================================================= */
 
 (function () {
   const $ = (id) => document.getElementById(id);
   const CFG = window.TT_CONFIG;
 
-  /* state */
-  let me = null;            // {role:'employee', empEmail}
+  let me = null;            // {id, email, full_name, role}
   let projects = [];
   let tasks = [];
+  let allowances = {};
   let settings = { screenshotIntervalMin: 10, idleThresholdMin: 5, deductIdleTime: false };
-  let currentSession = null; // active or paused backend session
+  let currentSession = null;   // active/paused session
+  let currentBreak = null;     // in-progress break (Store ref)
+  let breakTimer = null;
   let elapsedTimer = null;
   let todayMs = 0;
 
-  const view = {
-    login: $("loginView"), tracker: $("trackerView"),
-  };
+  const view = { login: $("loginView"), tracker: $("trackerView") };
   const el = {
     email: $("loginEmail"), pin: $("loginPin"), loginMsg: $("loginMsg"), loginBtn: $("loginBtn"),
-    brandName: $("brandName"), trackerBrand: $("trackerBrand"),
+    brandName: $("brandName"), trackerBrand: $("trackerBrand"), userEmail: $("userEmail"),
     statusPill: $("statusPill"), screenshotPill: $("screenshotPill"),
     elapsed: $("elapsedDisplay"), liveActivity: $("liveActivity"), todayTotal: $("todayTotal"), idleStatus: $("idleStatus"),
     project: $("projectSelect"), task: $("taskSelect"),
     start: $("startBtn"), pause: $("pauseBtn"), resume: $("resumeBtn"), stop: $("stopBtn"),
     trackerMsg: $("trackerMsg"), demoBanner: $("demoBanner"),
-    userEmail: $("userEmail"),
     captureExplain: $("captureExplain"), capturePreview: $("capturePreview"),
     captureOn: $("captureOnBtn"), captureOff: $("captureOffBtn"), captureMsg: $("captureMsg"),
     logoutBtn: $("logoutBtn"),
+    breakCard: $("breakCard"), breakPicker: $("breakPicker"),
+    breakStatus: $("breakStatus"), breakCountdown: $("breakCountdown"), breakRemaining: $("breakRemaining"),
   };
 
   function showView(name) {
     view.login.classList.toggle("hidden", name !== "login");
     view.tracker.classList.toggle("hidden", name !== "tracker");
   }
-
   function setMsg(elem, text, type) {
     if (!text) { elem.hidden = true; elem.textContent = ""; return; }
     elem.textContent = text;
@@ -44,32 +44,14 @@
     elem.classList.toggle("ok", type === "ok");
     elem.hidden = false;
   }
-
   function bindDemoBanner() {
-    if (API.isDemo()) {
-      el.demoBanner.hidden = false;
-      el.demoBanner.textContent = CFG.DEMO_NOTE;
-    }
+    if (API.isDemo()) { el.demoBanner.hidden = false; el.demoBanner.textContent = CFG.DEMO_NOTE; }
   }
 
   /* ---------------- Login ---------------- */
-  async function doLogin() {
-    const email = el.email.value.trim();
-    const pin = el.pin.value.trim();
-    if (!email || !pin) { setMsg(el.loginMsg, "Enter email and PIN.", "error"); return; }
-    el.loginBtn.disabled = true;
-    const res = await API.employeeLogin(email, pin);
-    el.loginBtn.disabled = false;
-    if (!res.ok) { setMsg(el.loginMsg, res.error, "error"); return; }
-    me = res.data;
-    setMsg(el.loginMsg, "");
-    await enterTracker();
-  }
-
-  /* Supabase-gate passed: sign the email into the data layer, then enter. */
   async function ssoEnter(email) {
-    const res = await API.supabaseLogin(email, { name: AUTH.getUser ? (AUTH.getUser().user_metadata && AUTH.getUser().user_metadata.full_name) : null });
-    if (!res.ok) { return; }
+    const res = API.supabaseLogin(email);
+    if (!res.ok) return;
     me = res.data;
     if (el.userEmail) el.userEmail.textContent = email;
     await enterTracker();
@@ -77,17 +59,22 @@
 
   async function enterTracker() {
     bindDemoBanner();
-    const [pt, s, mine] = await Promise.all([API.getProjectsTasks(), API.getSettings(), API.me()]);
-    projects = pt.data.projects || [];
-    tasks = pt.data.tasks || [];
-    settings = Object.assign(settings, s.data || {});
+    const ref = API.refs();
+    projects = ref.data.projects || [];
+    tasks = ref.data.tasks || [];
+    allowances = (ref.data.breakAllowances) || {};
+    settings = Object.assign(settings, API.settings().data || {});
     fillSelect();
+    const mine = API.myActive(me.id);
     currentSession = (mine.data && (mine.data.status === "active" || mine.data.status === "paused")) ? mine.data : null;
+    const open = API.openBreaks().find(b => b.employee_id === me.id);
+    if (open) currentBreak = open;
     refreshUI();
     showView("tracker");
     await refreshToday();
     if (currentSession) bindRunningState();
-    el.statusPill.textContent = currentSession ? "Working" : "Offline";
+    el.statusPill.textContent = currentSession ? (currentBreak ? "On Break" : "Working") : "Offline";
+    renderBreakUI();
   }
 
   function fillSelect() {
@@ -95,92 +82,190 @@
       projects.map(p => `<option value="${UTIL.esc(p.id)}">${UTIL.esc(p.name)}</option>`).join("");
     refreshTaskSelect();
   }
-
   function refreshTaskSelect() {
     const pid = el.project.value;
-    const list = tasks.filter(t => !pid || t.projectId === pid);
+    const list = tasks.filter(t => !pid || t.project_id === pid);
     el.task.innerHTML = '<option value="">Select task…</option>' +
       list.map(t => `<option value="${UTIL.esc(t.id)}">${UTIL.esc(t.name)}</option>`).join("");
   }
-
   function chosen() {
-    const project = projects.find(p => p.id === el.project.value);
-    const task = tasks.find(t => t.id === el.task.value);
-    return { project: project ? project.name : "", task: task ? task.name : "" };
+    const p = projects.find(x => x.id === el.project.value);
+    const t = tasks.find(x => x.id === el.task.value);
+    return {
+      project: p ? { id: p.id, name: p.name } : { id: null, name: "" },
+      task: t ? { id: t.id, name: t.name } : { id: null, name: "" },
+    };
   }
 
-  /* ---------------- Timer / session lifecycle ---------------- */
+  /* ---------------- Today total ---------------- */
   async function refreshToday() {
-    const d = new Date();
-    const from = d.toISOString().slice(0, 10);
-    const to = from;
-    const r = await API.timesheets(me.empEmail, from, to);
+    const d = new Date(), from = d.toISOString().slice(0,10), to = from;
+    const r = API.timesheets(me.id, from, to);
     if (r.ok) {
       todayMs = r.data.reduce((sum, s) => {
-        const end = s.end ? new Date(s.end).getTime() : Date.now();
-        return sum + Math.max(0, end - new Date(s.start).getTime() - (s.breakMs || 0));
+        const end = s.ended_at ? new Date(s.ended_at).getTime() : Date.now();
+        return sum + Math.max(0, end - new Date(s.started_at).getTime() - (s.break_ms || 0));
       }, 0);
       if (currentSession) todayMs += currentSessionElapsed();
       el.todayTotal.innerHTML = `Today: <b>${UTIL.hoursToLabel(todayMs)}</b>`;
     }
   }
-
   function currentSessionElapsed() {
     if (!currentSession || currentSession.status !== "active") return 0;
-    return Date.now() - new Date(currentSession.start).getTime() - (currentSession.breakMs || 0);
+    return Date.now() - new Date(currentSession.started_at).getTime() - (currentSession.break_ms || 0);
   }
 
+  /* ---------------- Session lifecycle ---------------- */
   async function startSession() {
     const c = chosen();
-    if (!c.project || !c.task) { setMsg(el.trackerMsg, "Select a project and task first.", "error"); return; }
-    const res = await API.startSession(me.empEmail, c.project, c.task);
+    if (!c.project.name || !c.task.name) { setMsg(el.trackerMsg, "Select a project and task first.", "error"); return; }
+    const res = API.startSession(me.id, c.project, c.task);
     if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
     currentSession = res.data;
     setMsg(el.trackerMsg, "", "");
     Activity.configure({ idleThresholdMs: settings.idleThresholdMin * 60000 });
     Activity.resetSession();
-    Activity.setOnSample((ms, activeInWindow) => { /* driving idle tick */ });
     Activity.start();
     bindRunningState();
-    refreshUI();
+    refreshUI(); renderBreakUI(); refreshToday();
+    bindActivitySync();
   }
-
-  async function pauseSession() {
-    const res = await API.pauseSession();
-    if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
-    currentSession.status = "paused";
-    Screenshot.stopCapture(); stopCaptureIndicator();
-    bindRunningState(); refreshUI();
-  }
-
   async function resumeSession() {
     const c = chosen();
-    if (!c.project || !c.task) { setMsg(el.trackerMsg, "Select a project and task.", "error"); return; }
-    const res = await API.resumeSession(c.project, c.task);
+    if (!c.project.name || !c.task.name) { setMsg(el.trackerMsg, "Select a project and task.", "error"); return; }
+    const res = API.resumeSession(me.id, c.project, c.task);
     if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
     currentSession = res.data;
-    bindRunningState(); refreshUI(); refreshToday();
-    // Capture should NOT auto-restart without explicit permission; require re-enable.
+    bindRunningState(); refreshUI(); refreshToday(); renderBreakUI();
   }
-
   async function stopSession() {
-    const stats = Activity.idleState();
-    const res = await API.stopSession({ pct: liveActivityPct() }, currentSession.breakMs || 0);
+    const res = API.stopSession(me.id, liveActivityPct(), currentSession ? currentSession.break_ms : 0, totalIdleMs());
     if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
     Screenshot.stopCapture(); stopCaptureIndicator();
-    currentSession = null;
-    Activity.resetSession();
     if (elapsedTimer) clearInterval(elapsedTimer);
-    bindRunningState(); refreshUI(); refreshToday();
+    if (breakTimer) clearInterval(breakTimer);
+    currentSession = null; currentBreak = null;
+    Activity.resetSession();
+    bindRunningState(); refreshUI(); renderBreakUI(); refreshToday();
     setMsg(el.trackerMsg, "", "");
     el.statusPill.textContent = "Offline";
   }
+  function totalIdleMs() { const s = Activity.idleState(); return s.idleList ? s.idleList.reduce((a,i)=>a+(i.end-i.start),0) : 0; }
+  function liveActivityPct() { return 50; }
 
-  function liveActivityPct() {
-    // Simple recent-5-min activity estimate from Activity state.
-    const s = Activity.idleState();
-    return 50; // sample; refined by real backend aggregator
+  /* ----------------- Break management ----------------- */
+  function renderBreakUI() {
+    const running = currentSession && currentSession.status === "active";
+    el.breakCard.hidden = !running;
+    if (!currentBreak) {
+      el.breakPicker.style.display = "";
+      el.breakStatus.hidden = true;
+      el.breakCountdown.hidden = true;
+      renderBreakRemaining();
+      return;
+    }
+    el.breakPicker.style.display = "none";
+    el.breakStatus.hidden = false;
+    el.breakStatus.innerHTML = `On <b>${allowanceLabel(currentBreak.break_type)}</b> since ${UTIL.fmtDateTime(currentBreak.started_at)} (click timer to end)`;
+    el.breakCountdown.hidden = false;
+    updateBreakCountdown();
+    if (!breakTimer) breakTimer = setInterval(() => { if (currentSession && currentSession.status === "active") updateBreakCountdown(); }, 1000);
   }
+  function allowanceLabel(t) { const a = allowances[t]; return a ? `${a.label} (${a.min} min)` : t; }
+  function renderBreakRemaining() {
+    if (!me) return;
+    const today = new Date().toDateString();
+    const parts = Object.keys(allowances).map(t => {
+      const a = allowances[t];
+      const used = API._raw.breaks.filter(b => b.employee_id === me.id && b.break_type === t && new Date(b.started_at).toDateString() === today).length;
+      return `${a.label}: ${Math.max(0, a.daily - used)}/${a.daily}`;
+    });
+    el.breakRemaining.textContent = "Remaining today — " + parts.join(" · ");
+  }
+  function updateBreakCountdown() {
+    if (!currentBreak) return;
+    const elapsed = Date.now() - new Date(currentBreak.started_at).getTime();
+    const allowedMs = currentBreak.allowed_min * 60000;
+    const remain = allowedMs - elapsed;
+    const cls = remain < 0 ? "over" : (remain < 60000 ? "warn" : "");
+    el.breakCountdown.className = "break-countdown " + cls;
+    el.breakCountdown.innerHTML = remain > 0 ? `Remaining: ${UTIL.msToClock(remain)}` : `Overbreak: ${UTIL.msToClock(-remain)}`;
+  }
+  async function startBreakAction(type) {
+    if (!currentSession || currentSession.status !== "active") { setMsg(el.trackerMsg, "Start tracking before a break.", "error"); return; }
+    const res = API.startBreak(me.id, currentSession.id, type);
+    if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
+    setMsg(el.trackerMsg, "", "");
+    currentBreak = res.data;
+    if (Screenshot.isCapturing()) Screenshot.stopCapture();
+    renderBreakUI();
+  }
+  function endBreakAction() {
+    if (!currentBreak) return;
+    const res = API.endBreak(me.id, currentBreak.id);
+    if (!res.ok) { setMsg(el.trackerMsg, res.error, "error"); return; }
+    if (currentSession) currentSession.break_ms = (currentSession.break_ms||0) + (res.data.actual_ms||0);
+    currentBreak = null;
+    if (breakTimer) clearInterval(breakTimer);
+    setMsg(el.trackerMsg,
+      res.data.status === "overbreak" ? `Break over by ${UTIL.msToClock(res.data.overbreak_ms)} — flagged for review.` : "Break ended within allowance.",
+      res.data.status === "overbreak" ? "error" : "ok");
+    renderBreakUI(); refreshUI(); refreshToday();
+  }
+
+  /* ---------------- Activity sync ---------------- */
+  function bindActivitySync() {
+    let bucket = { at: new Date().toISOString(), mouse: 0, keys: 0 };
+    const flush = () => {
+      if (!currentSession) return;
+      API.addActivity(me.id, currentSession.id, { at: bucket.at, mouse: bucket.mouse, keys: bucket.keys, active: 0, idle: 0 });
+      bucket = { at: new Date().toISOString(), mouse: 0, keys: 0 };
+    };
+    const hook = () => bucket.keys++;
+    document.addEventListener("keydown", hook, { passive: true });
+    const mm = () => bucket.mouse++;
+    document.addEventListener("mousemove", mm, { passive: true });
+    setInterval(flush, 60000);
+    window._activityRelease = () => {
+      document.removeEventListener("keydown", hook);
+      document.removeEventListener("mousemove", mm);
+    };
+  }
+
+  /* ---------------- Capture ---------------- */
+  function stopCaptureIndicator() {
+    el.screenshotPill.textContent = "Screenshots: off"; el.screenshotPill.className = "pill";
+    el.captureOn.hidden = false; el.captureOff.hidden = true;
+    setMsg(el.captureMsg, "", "");
+  }
+  async function enableCapture() {
+    if (!Screenshot.supported()) {
+      setMsg(el.captureMsg, "This browser does not support the Screen Capture API, so screenshots cannot be recorded here. No screenshot will be claimed.", "error");
+      return;
+    }
+    if (!currentSession) { setMsg(el.captureMsg, "Start a timer before enabling screen capture.", "error"); return; }
+    setMsg(el.captureMsg, "Your browser will ask you to choose a screen to share. This is required to capture screenshots.", "ok");
+    Screenshot.setPreviewVideo(el.capturePreview);
+    Screenshot.setOnStateChange((st) => {
+      if (st.capturing) {
+        el.screenshotPill.textContent = "Screenshots: ON"; el.screenshotPill.className = "pill p-ok";
+        el.captureOn.hidden = true; el.captureOff.hidden = false;
+        setMsg(el.captureMsg, "Screen capture is active.", "ok");
+      } else if (st.reason) { stopCaptureIndicator(); setMsg(el.captureMsg, st.reason, "error"); }
+    });
+    const opened = await Screenshot.requestPermission();
+    if (!opened) return;
+    Screenshot.setIntervalMs(settings.screenshotIntervalMin * 60000);
+    Screenshot.setOnShot((shot) => saveShot(shot));
+    Screenshot.start(settings.screenshotIntervalMin * 60000, () => ({
+      sessionId: currentSession.id, empId: me.id,
+      project: currentSession.project, task: currentSession.task,
+      intervalMin: settings.screenshotIntervalMin,
+    }));
+    if (API.isDemo()) setMsg(el.captureMsg, "Demo mode: captured screenshot is kept in this browser only (not synced).", "ok");
+  }
+  async function saveShot(shot) { await API.recordScreenshot({ ...shot, empId: me.id }); }
+  async function disableCapture() { Screenshot.stopCapture(); stopCaptureIndicator(); setMsg(el.captureMsg, "Screen sharing stopped.", "ok"); }
 
   /* ---------------- UI updates ---------------- */
   function refreshUI() {
@@ -193,13 +278,12 @@
     el.stop.hidden = !currentSession;
     el.project.disabled = !!currentSession;
     el.task.disabled = !!currentSession;
-    el.statusPill.textContent = paused ? "On Break" : (running ? "Working" : "Offline");
+    el.statusPill.textContent = paused ? "On Break" : (running ? (currentBreak ? "On Break" : "Working") : "Offline");
     el.statusPill.className = "pill " + (paused ? "p-warn" : (running ? "p-ok" : "p-muted"));
     if (running) startElapsed();
-    else if (paused) { if (elapsedTimer) clearInterval(elapsedTimer); el.elapsed.textContent = UTIL.msToClock(currentSessionElapsed() - (currentSession ? currentSession.breakMs : 0) || 0); }
+    else if (paused) { if (elapsedTimer) clearInterval(elapsedTimer); el.elapsed.textContent = UTIL.msToClock(currentSession ? (currentSession.break_ms||0) : 0); }
     else { if (elapsedTimer) clearInterval(elapsedTimer); el.elapsed.textContent = "00:00:00"; }
   }
-
   function startElapsed() {
     if (elapsedTimer) clearInterval(elapsedTimer);
     const upd = () => {
@@ -207,18 +291,12 @@
       const s = Activity.idleState();
       el.idleStatus.textContent = s.isIdle ? "Idle" : "Active";
       el.idleStatus.className = "stat-inline " + (s.isIdle ? "idle-on" : "");
-      el.liveActivity.innerHTML = `Activity: <b>${UTIL.esc(liveLabel())}</b>`;
     };
     upd();
     elapsedTimer = setInterval(upd, 1000);
   }
-
-  function liveLabel() { return "measuring…"; }
-
   function bindRunningState() {
     if (currentSession && currentSession.status === "active") {
-      // Activity idle indicator
-      Activity.setOnSample((ms, activeInWindow) => {});
       Activity.setOnIdleChange((isIdle) => {
         el.idleStatus.textContent = isIdle ? "Idle" : "Active";
         el.idleStatus.className = "stat-inline " + (isIdle ? "idle-on" : "");
@@ -227,111 +305,53 @@
     }
   }
 
-  /* ---------------- Capture ---------------- */
-  function stopCaptureIndicator() {
-    el.screenshotPill.textContent = "Screenshots: off";
-    el.screenshotPill.className = "pill";
-    el.captureOn.hidden = false; el.captureOff.hidden = true;
-    setMsg(el.captureMsg, "", "");
-  }
-
-  async function enableCapture() {
-    if (!Screenshot.supported()) {
-      setMsg(el.captureMsg, "This browser does not support the Screen Capture API, so screenshots cannot be recorded here. This is a browser limitation — no screenshot will be claimed.", "error");
-      return;
-    }
-    if (!currentSession) { setMsg(el.captureMsg, "Start a timer before enabling screen capture.", "error"); return; }
-    setMsg(el.captureMsg, "Your browser will ask you to choose a screen to share. This is required to capture screenshots.", "ok");
-    Screenshot.setPreviewVideo(el.capturePreview);
-    Screenshot.setOnStateChange((st) => {
-      if (st.capturing) {
-        el.screenshotPill.textContent = "Screenshots: ON";
-        el.screenshotPill.className = "pill p-ok";
-        el.captureOn.hidden = true; el.captureOff.hidden = false;
-        setMsg(el.captureMsg, "Screen capture is active. Images are captured at the configured interval and saved to the backend.", "ok");
-      } else if (st.reason) {
-        stopCaptureIndicator();
-        setMsg(el.captureMsg, st.reason, "error");
-      }
-    });
-    const opened = await Screenshot.requestPermission();
-    if (!opened) return;
-    Screenshot.setIntervalMs(settings.screenshotIntervalMin * 60000);
-    Screenshot.setOnShot((shot) => { saveShot(shot); });
-    Screenshot.start(settings.screenshotIntervalMin * 60000, () => ({
-      sessionId: currentSession.id, empEmail: me.empEmail,
-      project: currentSession.project, task: currentSession.task,
-      intervalMin: settings.screenshotIntervalMin,
-    }));
-    if (API.isDemo()) setMsg(el.captureMsg, "Demo mode: captured screenshot is kept in this browser only (not saved to any company backend).", "ok");
-  }
-
-  async function saveShot(shot) {
-    // Persist via API (backend or demo store).
-    await API.recordScreenshot(shot);
-  }
-
-  async function disableCapture() {
-    Screenshot.stopCapture();
-    stopCaptureIndicator();
-    setMsg(el.captureMsg, "Screen sharing stopped.", "ok");
-  }
-
   async function logout() {
-    if (currentSession && currentSession.status === "active") {
-      // Honest: stop the session before logout (no silent tracking).
-      await stopSession();
-    }
+    if (currentSession && currentSession.status === "active") { await stopSession(); }
     Screenshot.stopCapture(true);
-    me = null; currentSession = null;
+    if (window._activityRelease) { try { window._activityRelease(); } catch (e) {} }
+    me = null; currentSession = null; currentBreak = null;
     if (elapsedTimer) clearInterval(elapsedTimer);
+    if (breakTimer) clearInterval(breakTimer);
     el.email.value = ""; el.pin.value = "";
-    if (window.AUTH && AUTH.enabled()) {
-      // Supabase gate re-shows the overlay on next load.
-      try { await AUTH.signOut(); } catch (e) {}
-      showView("login");
-    } else {
-      showView("login");
-    }
+    if (window.AUTH && AUTH.enabled()) { try { await AUTH.signOut(); } catch (e) {} }
+    showView("login");
   }
 
   /* ---------------- wiring ---------------- */
-  async function init() {
+  function init() {
     el.brandName.textContent = CFG.APP_NAME;
     el.trackerBrand.textContent = CFG.APP_NAME;
     bindDemoBanner();
 
-    el.loginBtn.addEventListener("click", doLogin);
-    el.email.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
-    el.pin.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
-
     el.project.addEventListener("change", refreshTaskSelect);
     el.start.addEventListener("click", startSession);
-    el.pause.addEventListener("click", pauseSession);
+    el.pause.addEventListener("click", () => {
+      if (currentBreak) endBreakAction();
+      else { setMsg(el.trackerMsg, "Select a break type below.", "ok"); renderBreakUI(); }
+    });
     el.resume.addEventListener("click", resumeSession);
     el.stop.addEventListener("click", stopSession);
     el.captureOn.addEventListener("click", enableCapture);
     el.captureOff.addEventListener("click", disableCapture);
     el.logoutBtn.addEventListener("click", logout);
+    el.breakPicker.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-break]");
+      if (btn) startBreakAction(btn.dataset.break);
+    });
+    if (el.breakCountdown) el.breakCountdown.addEventListener("click", endBreakAction);
 
-    // persist live session (employee refresh lasts 15s)
     setInterval(async () => {
       if (!me || me.role !== "employee") return;
-      const r = await API.myActiveSession(me.empEmail);
-      if (r.ok && r.data && r.data.status === "active" && !currentSession) {
-        currentSession = r.data; refreshUI();
-      }
+      const r = API.myActive(me.id);
+      if (r.ok && r.data && r.data.status === "active" && !currentSession) { currentSession = r.data; refreshUI(); renderBreakUI(); }
     }, 15000);
 
-    // Auth mode: Supabase gate (primary) or local PIN login (fallback).
     if (window.AUTH && AUTH.enabled()) {
       showView("login");
-      AUTH.setOnAuthorized(function (email) { ssoEnter(email); });
-      // AUTH.gate() runs at load (in auth.js) and shows the overlay when needed.
+      AUTH.setOnAuthorized((email) => ssoEnter(email));
     } else {
       showView("login");
     }
   }
-
   init();
 })();
