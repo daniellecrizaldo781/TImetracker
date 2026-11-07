@@ -11,9 +11,9 @@
  *    Login is still real (Supabase).
  * ========================================================================= */
 window.TT_CONFIG = {
-  /* ---- Supabase auth (same project as the Team Dashboard) ---- */
-  supabaseUrl: 'https://azkcfwfsznqwrwaaaltp.supabase.co',
-  supabaseAnonKey: 'sb_publishable_TocTfURGWstJCWhCMb7flA_obIbU_Q9',
+  /* ---- Supabase auth (dedicated Time Tracker project) ---- */
+  supabaseUrl: 'https://cnzsfbxixcfzaegayvpp.supabase.co',
+  supabaseAnonKey: 'sb_publishable_T3hjuLN4UceFON0E7KO4Ig_-PWi6iXb',
 
   /* ---- tracking data backend ---- */
   BACKEND_URL: "",

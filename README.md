@@ -9,11 +9,10 @@ app, no installer, no executable. Employees and admins use it over the web.
   tracked hours, activity %, screenshot gallery, timesheets, daily/weekly/monthly reports,
   projects, settings, and filters (employee, status, date).
 
-## Login (Supabase — same as the Team Dashboard)
+## Login (Supabase — dedicated project, same style as the Team Dashboard)
 
-Login is **email + password on the shared Supabase project**, gated by the same
-`allowed_emails` allow-list table as the Team Dashboard. An employee is admitted only if
-their email is approved in that table. "Forgot password?" sends a Supabase reset email.
+Login is **email + password on a dedicated Supabase project** (`cnzsfbxixcfzaegayvpp.supabase.co`, separate from the Team Dashboard), gated by the
+`allowed_emails` allow-list table. An employee is admitted only if their email is approved in that table. "Forgot password?" sends a Supabase reset email.
 
 - Credentials live in `js/config.js` (`supabaseUrl`, `supabaseAnonKey`).
 - The Supabase client is vendored at `assets/supabase.js` (copied from the Team Dashboard).
