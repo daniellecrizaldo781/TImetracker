@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Time Tracker</title>
+<link rel="stylesheet" href="css/style.css" />
+<style>
+  .land { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  .land h1 { font-size: 34px; margin-bottom: 6px; }
+  .land .lead { color: var(--muted); margin-bottom: 32px; }
+  .land .card { max-width: 380px; }
+  .land .btn { width: 100%; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="land">
+  <div class="card">
+    <h1>⏱ <span id="appName"></span></h1>
+    <p class="lead">Browser-based time tracking. No install — sign in and track.</p>
+    <button class="btn primary" onclick="location.href='employee.html'">I'm an Employee</button>
+    <button class="btn" onclick="location.href='admin.html'">Admin Dashboard</button>
+    <p class="hint">Tracking is within your browser. Screen capture and activity measurement
+    require your explicit permission and are never hidden.</p>
+  </div>
+</div>
+<script src="js/config.js"></script>
+<script>document.getElementById('appName').textContent = window.TT_CONFIG.APP_NAME;</script>
+</body>
+</html>

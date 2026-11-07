@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Time Tracker — Employee</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="employee-bg">
+<div id="demoBanner" class="demo-banner" hidden></div>
+
+<!-- Login -->
+<div id="loginView" class="view hidden">
+  <div class="card login-card">
+    <h1 class="brand">⏱ <span id="brandName">Time Tracker</span></h1>
+    <p class="sub">Sign in to start tracking.</p>
+    <label>Email
+      <input type="email" id="loginEmail" placeholder="you@oricle.com" autocomplete="username" />
+    </label>
+    <label>PIN
+      <input type="password" id="loginPin" placeholder="Your 4-digit PIN" autocomplete="current-password" />
+    </label>
+    <p id="loginMsg" class="msg error" hidden></p>
+    <button class="btn primary block" id="loginBtn">Sign In</button>
+    <p class="hint">Demo login: <code>demo@oricle.local</code> / <code>1234</code></p>
+  </div>
+</div>
+
+<!-- Tracker -->
+<div id="trackerView" class="view hidden">
+  <header class="tracker-header">
+    <span class="logo">⏱ <span id="trackerBrand">Time Tracker</span></span>
+    <div class="header-right">
+      <span id="statusPill" class="pill">Offline</span>
+      <span id="screenshotPill" class="pill">Screenshots: off</span>
+      <button class="btn ghost" id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <main class="tracker-main">
+    <!-- Hero timer -->
+    <section class="card hero-card">
+      <div class="timer-display" id="elapsedDisplay">00:00:00</div>
+      <div class="timer-labels">
+        <span id="liveActivity" class="stat-inline">Activity: <b>—</b></span>
+        <span id="todayTotal" class="stat-inline">Today: <b>—</b></span>
+        <span id="idleStatus" class="stat-inline">—</span>
+      </div>
+
+      <div class="controls">
+        <select id="projectSelect" class="select"><option>Select project…</option></select>
+        <select id="taskSelect" class="select"><option>Select task…</option></select>
+        <div class="btn-row">
+          <button class="btn primary" id="startBtn">▶ Start</button>
+          <button class="btn warn" id="pauseBtn" hidden>⏸ Break</button>
+          <button class="btn accent" id="resumeBtn" hidden>▶ Resume</button>
+          <button class="btn danger" id="stopBtn" hidden>■ Stop</button>
+        </div>
+      </div>
+      <p id="trackerMsg" class="msg" hidden></p>
+    </section>
+
+    <!-- Capture status -->
+    <section class="card capture-card">
+      <h3>Screen capture</h3>
+      <p class="muted" id="captureExplain">
+        Optional. Screen capture uses your browser's screen-share permission
+        (<code>getDisplayMedia</code>). It only ever captures while you are
+        tracking, and never during a break. You can stop it at any time.
+      </p>
+      <video id="capturePreview" class="preview-video" muted playsinline hidden></video>
+      <div class="btn-row" id="captureControls">
+        <button class="btn" id="captureOnBtn">Enable screen capture</button>
+        <button class="btn danger" id="captureOffBtn" hidden>Stop screen share</button>
+      </div>
+      <p id="captureMsg" class="msg" hidden></p>
+    </section>
+  </main>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/localstore.js"></script>
+<script src="js/api.js"></script>
+<script src="js/activity.js"></script>
+<script src="js/screenshot.js"></script>
+<script src="js/employee.js"></script>
+</body>
+</html>

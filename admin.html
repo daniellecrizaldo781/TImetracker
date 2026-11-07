@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Time Tracker — Admin Dashboard</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="demoBanner" class="demo-banner" hidden></div>
+
+<!-- Login -->
+<div id="loginView" class="view hidden">
+  <div class="card login-card">
+    <h1 class="brand">⏱ Admin Dashboard</h1>
+    <p class="sub">Sign in as administrator.</p>
+    <label>Admin password
+      <input type="password" id="adminPass" autocomplete="current-password" />
+    </label>
+    <p id="loginMsg" class="msg error" hidden></p>
+    <button class="btn primary block" id="loginBtn">Sign In</button>
+    <p class="hint">Demo admin password: <code>admin1234</code></p>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashView" class="view hidden">
+  <header class="tracker-header">
+    <span class="logo">⏱ Admin Dashboard</span>
+    <button class="btn ghost" id="logoutBtn">Logout</button>
+  </header>
+
+  <main class="dash-main">
+    <!-- KPI row -->
+    <section class="kpi-row">
+      <div class="kpi"><span class="kpi-num" id="kpiWorking">0</span><span class="kpi-lab">Working</span></div>
+      <div class="kpi"><span class="kpi-num" id="kpiIdle">0</span><span class="kpi-lab">Idle</span></div>
+      <div class="kpi"><span class="kpi-num" id="kpiBreak">0</span><span class="kpi-lab">On Break</span></div>
+      <div class="kpi"><span class="kpi-num" id="kpiOffline">0</span><span class="kpi-lab">Offline</span></div>
+      <div class="kpi"><span class="kpi-num" id="kpiHours">0h</span><span class="kpi-lab">Tracked</span></div>
+      <div class="kpi"><span class="kpi-num" id="kpiAvg">—</span><span class="kpi-lab">Avg activity</span></div>
+    </section>
+
+    <!-- Filters -->
+    <section class="card filter-card">
+      <select id="fEmp"><option value="">All employees</option></select>
+      <select id="fStatus">
+        <option value="all">All statuses</option>
+        <option value="active">Working</option>
+        <option value="paused">On Break</option>
+        <option value="completed">Stopped</option>
+      </select>
+      <input type="date" id="fFrom" />
+      <input type="date" id="fTo" />
+      <button class="btn" id="applyFilters">Apply</button>
+    </section>
+
+    <nav class="tabs">
+      <button class="tab" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="timesheets">Timesheets</button>
+      <button class="tab" data-tab="reports">Reports</button>
+      <button class="tab" data-tab="screenshots">Screenshots</button>
+      <button class="tab" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- Tab content -->
+    <section id="tab-overview" class="tabbody">
+      <h2>Live status</h2>
+      <div id="liveTable" class="table-wrap"></div>
+      <h2>Recent sessions</h2>
+      <div id="sessionsTable" class="table-wrap"></div>
+      <canvas id="activityChart" width="0" height="0" hidden></canvas>
+    </section>
+
+    <section id="tab-timesheets" class="tabbody hidden">
+      <h2>Timesheets</h2>
+      <div id="timesheetTable" class="table-wrap"></div>
+    </section>
+
+    <section id="tab-reports" class="tabbody hidden">
+      <h2>Reports</h2>
+      <div class="btn-row-inline">
+        <button class="btn" data-report="day">Daily</button>
+        <button class="btn" data-report="week">Weekly</button>
+        <button class="btn" data-report="month">Monthly</button>
+        <button class="btn" data-report="employee">By employee</button>
+        <button class="btn" data-report="project">By project</button>
+      </div>
+      <div id="reportTable" class="table-wrap"></div>
+    </section>
+
+    <section id="tab-screenshots" class="tabbody hidden">
+      <h2>Screenshot gallery</h2>
+      <p class="muted" id="shotsHint">Only screenshots that were actually captured and saved appear here. If capture was denied or unsupported, none will show.</p>
+      <div id="shotGallery" class="gallery"></div>
+    </section>
+
+    <section id="tab-projects" class="tabbody hidden">
+      <h2>Projects &amp; tasks</h2>
+      <div id="projectList"></div>
+    </section>
+
+    <section id="tab-settings" class="tabbody hidden">
+      <h2>Settings</h2>
+      <div class="card">
+        <label>Screenshot interval (minutes)
+          <input type="number" id="setShotInterval" min="1" />
+        </label>
+        <label>Idle threshold (minutes)
+          <input type="number" id="setIdle" min="1" />
+        </label>
+        <label class="checkline">
+          <input type="checkbox" id="setDeductIdle" /> Deduct idle time from tracked hours
+        </label>
+        <button class="btn primary" id="saveSettings">Save settings</button>
+        <p id="settingsMsg" class="msg" hidden></p>
+      </div>
+      <p class="muted">Idle detection uses in-page activity. Original session records are preserved; adjustments are applied only on top, never silently removing recorded time.</p>
+    </section>
+  </main>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/localstore.js"></script>
+<script src="js/api.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
