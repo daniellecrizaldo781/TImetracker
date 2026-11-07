@@ -268,35 +268,152 @@
   }
 
   /* ============================ SCHEDULE & ATTENDANCE ============================ */
+  function parseDate(s) { var p = s.split("-"); return new Date(+p[0], +p[1]-1, +p[2]); }
+  function toDateStr(d) {
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  function weekDates(anchor) {
+    var a = parseDate(anchor);
+    var day = (a.getDay() + 6) % 7; // 0=Mon
+    a.setDate(a.getDate() - day);
+    var out = [];
+    for (var i = 0; i < 7; i++) { var d = new Date(a); d.setDate(a.getDate() + i); out.push(toDateStr(d)); }
+    return out;
+  }
+  function shiftWeek(direction) {
+    // move the current week by +/- 7 days without UTC date drift
+    var cur = parseDate(state.schedWeek);
+    cur.setDate(cur.getDate() + (direction > 0 ? 7 : -7));
+    state.schedWeek = toDateStr(cur);
+  }
   function renderSchedule() {
-    addHeadFilters(`<input type="month" id="schMo" value="${todayStr().slice(0,7)}"><button class="btn" id="schApply">Apply</button>`);
-    const month = todayStr().slice(0,7);
-    const scheds = (API.listSchedules() && API.listSchedules().data) || [];
-    const att = (API.attendanceAll() && API.attendanceAll().data) || [];
-    // Team view: rows=employees, cols=days
-    const empList = API._raw.employees.filter(e=>e.is_active);
-    const rows = empList.map(e => {
-      const days = new Date(todayStr().slice(0,4), todayStr().slice(5,7)*1, 0).getDate();
-      const cells = Array.from({length:days},(_,i)=> {
-        const d = todayStr().slice(0,8) + String(i+1).padStart(2,"0");
-        const sched = scheds.find(s=>s.employee_id===e.id && s.shift_date===d);
-        if (!sched) return "<td class='cal-empty'></td>";
-        const a = att.find(x=>x.employee_id===e.id && x.shift_date===d);
-        return `<td class="cal on-${a?a.status:"pending"}" title="${sched.shift_start}–${sched.shift_end}">${sched.shift_start.slice(0,5)}<br>${a?statusBadge(a.status):"—"}</td>`;
+    // week navigation state
+    if (!state.schedWeek) state.schedWeek = todayStr();
+    var dates = weekDates(state.schedWeek);
+    var dow = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    var scheds = (API.listSchedules() && API.listSchedules().data) || [];
+    var att = (API.attendanceAll() && API.attendanceAll().data) || [];
+    var empList = API._raw.employees.filter(e=>e.is_active);
+
+    // shift status from attendance
+    function shiftStatus(empId, date) {
+      var a = att.find(x=>x.employee_id===empId && x.shift_date===date);
+      return a ? a.status : "";
+    }
+
+    var rows = empList.map(e => {
+      var cells = dates.map(function (d) {
+        var s = scheds.find(x=>x.employee_id===e.id && x.shift_date===d);
+        if (!s) return "<td class='cal-empty no-sched'></td>";
+        var st = shiftStatus(e.id, d);
+        var stCls = { on_time:"b-ok", late:"b-warn", missed_shift:"b-muted", abandoned:"b-danger", overtime:"b-ok" }[st] || "b-ok";
+        var weekend = [0,6].indexOf(parseDate(d).getDay()) >= 0;
+        var cls = weekend ? "shift-block weekend" : "shift-block";
+        var schedId = s.id || "";
+        return `<td class="cal"><div class="${cls}">
+          <div class="shift-time">${esc(s.shift_start)}–${esc(s.shift_end)}</div>
+          ${s.break_start ? `<div class="shift-brk">brk ${esc(s.break_start)}–${esc(s.break_end||"")}</div>` : ""}
+          <div class="shift-actions">
+            <span class="badge ${stCls}">${st?esc(st.replace(/_/g," ")):"scheduled"}</span>
+            <button class="lbl sched-edit" data-id="${esc(schedId)}">edit</button>
+            <button class="lbl sched-del" data-id="${esc(schedId)}">✕</button>
+          </div>
+        </div></td>`;
       }).join("");
-      return `<tr><td class="cal-emp">${esc(e.full_name)}</td>${cells}</tr>`;
+      return `<tr data-eid="${esc(e.id)}" class="clickable-emp"><td class="cal-emp">${esc(e.full_name)}</td>${cells}</tr>`;
     }).join("");
+
+    var header = dates.map(function (d, i) {
+      var m = new Date(d+"T00:00:00");
+      return `<th>${dow[i]}<br><span class="cal-day">${m.getDate()}</span></th>`;
+    }).join("");
+
+    // add/edit form
+    var editSched = state.editingSched ? scheds.find(s=>(s.id||"")===state.editingSched) : null;
+    var fEmp = editSched ? editSched.employee_id : "";
+    var fDate = editSched ? editSched.shift_date : "";
+    var fStart = editSched ? editSched.shift_start : "08:00";
+    var fEnd = editSched ? editSched.shift_end : "17:00";
+    var fBStart = editSched ? (editSched.break_start||"") : "";
+    var fBEnd = editSched ? (editSched.break_end||"") : "";
+    var formTitle = editSched ? "Edit schedule" : "Add schedule";
+
     body.innerHTML = `
-      <h2 class="sec">Team schedule · ${todayStr().slice(0,7)}</h2>
-      <div class="table-wrap sched-wrap"><table>
-        <thead><tr><th>Employee</th>${Array.from({length:new Date(todayStr().slice(0,4),todayStr().slice(5,7)*1,0).getDate()},(_,i)=>`<th>${i+1}</th>`).join("")}</tr></thead>
-        <tbody>${rows}</tbody></table></div>
+      <h2 class="sec">Weekly schedule · ${dates[0]} → ${dates[6]}</h2>
+      <div class="sched-toolbar">
+        <button class="btn" id="wPrev">‹ Prev</button>
+        <span class="sched-range muted">${dow[0]} ${dates[0]} – ${dow[6]} ${dates[6]}</span>
+        <button class="btn" id="wNext">Next ›</button>
+        <button class="btn" id="wToday">Today</button>
+      </div>
+
+      <div class="card sched-form">
+        <h3>${formTitle}</h3>
+        <div class="sched-form-grid">
+          <label>Employee
+            <select id="sEmp">${empList.map(e=>`<option value="${esc(e.id)}" ${e.id===fEmp?"selected":""}>${esc(e.full_name)}</option>`).join("")}</select>
+          </label>
+          <label>Date <input type="date" id="sDate" value="${esc(fDate)}"></label>
+          <label>Start <input type="time" id="sStart" value="${esc(fStart)}"></label>
+          <label>End <input type="time" id="sEnd" value="${esc(fEnd)}"></label>
+          <label>Break start <input type="time" id="sBStart" value="${esc(fBStart)}"></label>
+          <label>Break end <input type="time" id="sBEnd" value="${esc(fBEnd)}"></label>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="sSave">${editSched?"Save changes":"Add to schedule"}</button>
+          <button class="btn ghost" id="sCancel" ${editSched?"":"hidden"}>Cancel</button>
+          <button class="btn" id="sClear" ${editSched?"hidden":""}>Clear form</button>
+        </div>
+        <p id="sMsg" class="msg" hidden></p>
+      </div>
+
+      <div class="table-wrap sched-wrap"><table class="sched-grid">
+        <thead><tr><th>Employee</th>${header}</tr></thead>
+        <tbody>${rows||"<tr><td colspan=8 class='muted'>No employees.</td></tr>"}</tbody>
+      </table></div>
+
       <h2 class="sec">Attendance exceptions</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Employee</th><th>Date</th><th>Actual in</th><th>Actual out</th><th>Late (min)</th><th>Early (min)</th><th>Overtime</th><th>Status</th></tr></thead>
         <tbody>${att.map(a=>`<tr><td>${esc(empName(a.employee_id))}</td><td>${esc(a.shift_date)}</td><td>${a.actual_start?esc(a.actual_start.slice(11,16)):"—"}</td><td>${a.actual_end?esc(a.actual_end.slice(11,16)):"—"}</td><td>${a.late_minutes}</td><td>${a.early_minutes}</td><td>${UTIL.msToClock(a.overtime_ms||0)}</td><td>${statusBadge(a.status)}</td></tr>`).join("")||"<tr><td colspan=8 class='muted'>No attendance records yet — auto-computed when sessions stop.</td></tr>"}</tbody>
       </table></div>`;
-    const schApply=$("schApply"); if(schApply) schApply.addEventListener("click",()=>{ /* month filter */ renderSchedule(); });
+
+    // week nav
+    var prev=$("wPrev"), next=$("wNext"), todayb=$("wToday");
+    if (prev) prev.addEventListener("click", function(){ shiftWeek(-1); state.editingSched=null; renderSchedule(); });
+    if (next) next.addEventListener("click", function(){ shiftWeek(1); state.editingSched=null; renderSchedule(); });
+    if (todayb) todayb.addEventListener("click", function(){ state.schedWeek = todayStr(); state.editingSched=null; renderSchedule(); });
+
+    // save
+    var save=$("sSave");
+    if (save) save.addEventListener("click", function(){
+      var emp = $("sEmp").value, date = $("sDate").value, st = $("sStart").value, en = $("sEnd").value;
+      var bst = $("sBStart").value, ben = $("sBEnd").value;
+      var m = $("sMsg");
+      if(!emp || !date || !st || !en){ m.textContent="Employee, date, start and end are required."; m.classList.add("error"); m.hidden=false; return; }
+      if(en <= st){ m.textContent="End time must be after start time."; m.classList.add("error"); m.hidden=false; return; }
+      var rec = { employee_id: emp, shift_date: date, shift_start: st, shift_end: en,
+        break_start: bst || null, break_end: ben || null, grace_minutes: 5, week_copy_group: "", is_template: false };
+      if (state.editingSched) rec.id = state.editingSched;
+      var r = API.saveSchedule(rec);
+      m.textContent = r.ok ? "Saved." : (r.error||"Error");
+      m.classList.toggle("ok", r.ok); m.classList.toggle("error", !r.ok); m.hidden=false;
+      state.editingSched = null;
+      renderSchedule();
+    });
+    var cancel=$("sCancel"); if(cancel) cancel.addEventListener("click", function(){ state.editingSched=null; state.schedWeek=todayStr(); renderSchedule(); });
+    var clear=$("sClear"); if(clear) clear.addEventListener("click", function(){ $("sDate").value=""; $("sStart").value="08:00"; $("sEnd").value="17:00"; $("sBStart").value=""; $("sBEnd").value=""; });
+
+    // edit / delete handlers
+    document.querySelectorAll(".sched-edit").forEach(b => b.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      state.editingSched = this.dataset.id;
+      renderSchedule();
+    }));
+    document.querySelectorAll(".sched-del").forEach(b => b.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      if(confirm("Remove this scheduled shift?")){ API.removeSchedule(this.dataset.id); renderSchedule(); }
+    }));
   }
 
   /* ============================ REPORTS ============================ */

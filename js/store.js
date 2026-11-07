@@ -243,7 +243,9 @@ const Store = (() => {
   }
 
   /* ---------------- SCHEDULES ---------------- */
-  function listSchedules() { return DB.schedules.slice().sort((a,b) => (a.shift_date < b.shift_date ? -1 : 1)); }
+  function listSchedules() {
+    return { ok: true, data: DB.schedules.slice().sort((a,b) => (a.shift_date < b.shift_date ? -1 : 1)) };
+  }
   function saveSchedule(sc) {
     if (sc.id) {
       const i = DB.schedules.findIndex(x => x.id === sc.id);

@@ -186,6 +186,30 @@ h2 { margin: 22px 0 10px; font-size: 18px; }
 .sched-wrap { overflow-x: auto; }
 .lbl { color: var(--primary); cursor: pointer; text-decoration: underline; font-size: 12px; }
 
+/* ===== Schedule editor (Hubstaff-style) ===== */
+.sched-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.sched-range { font-size: 14px; font-weight: 600; }
+.sched-form { margin-bottom: 16px; }
+.sched-form h3 { margin: 0 0 10px; }
+.sched-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 12px; }
+.sched-form-grid label { margin: 0; }
+.sched-grid { border-collapse: separate; border-spacing: 2px; min-width: 860px; }
+.sched-grid th { text-align: center; font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+.sched-grid .cal-day { font-size: 18px; color: var(--text); }
+.cal-emp { min-width: 150px; font-weight: 600; position: sticky; left: 0; background: var(--card); z-index: 1; }
+.cal { min-width: 96px; padding: 2px; vertical-align: top; height: 68px; }
+figcaption.cal-empty, .cal-empty { }
+.no-sched { background: #f6f8fb; }
+.shift-block {
+  background: #e3ecfb; border: 1px solid #bfd2f5; border-left: 3px solid var(--primary);
+  border-radius: 6px; padding: 4px 6px; font-size: 11px;
+}
+.shift-block.weekend { background: #ede9fe; border: 1px solid #ddd0fb; border-left: 3px solid #7c3aed; }
+.shift-time { font-weight: 700; color: var(--text); }
+.shift-brk { color: var(--muted); }
+.shift-actions { display: flex; gap: 8px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
+.shift-actions .lbl { font-size: 11px; margin: 0; }
+
 /* break UI */
 .break-picker { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
 .break-opt { flex: 1; min-width: 120px; }
