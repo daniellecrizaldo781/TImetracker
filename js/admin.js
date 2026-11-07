@@ -555,6 +555,13 @@
   function wire() {
     document.querySelectorAll(".nav-item").forEach(n => n.addEventListener("click", () => switchPage(n.dataset.page)));
     $("logoutBtn").addEventListener("click", logout);
+    var demoBtn = document.getElementById("demoAdmin");
+    if (demoBtn) demoBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      // Enter the dashboard with seeded demo data, no Supabase setup needed.
+      var authO = document.getElementById("authOverlay"); if (authO) authO.style.display = "none";
+      enterDash();
+    });
     if (window.AUTH && AUTH.enabled()) {
       showView("login");
       AUTH.setOnAuthorized((email) => ssoEnter(email));

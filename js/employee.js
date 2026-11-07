@@ -340,6 +340,18 @@
     });
     if (el.breakCountdown) el.breakCountdown.addEventListener("click", endBreakAction);
 
+    // Demo login: enter with seeded demo employee (works with no Supabase setup).
+    var demoEmp = document.getElementById("demoEmp");
+    if (demoEmp) demoEmp.addEventListener("click", function (e) {
+      e.preventDefault();
+      var res = API.supabaseLogin("demo@oricle.local");
+      if (!res.ok) return;
+      me = res.data;
+      if (el.userEmail) el.userEmail.textContent = me.email;
+      var authO = document.getElementById("authOverlay"); if (authO) authO.style.display = "none";
+      enterTracker();
+    });
+
     setInterval(async () => {
       if (!me || me.role !== "employee") return;
       const r = API.myActive(me.id);
