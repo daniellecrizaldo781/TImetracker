@@ -57,25 +57,34 @@
 
   async function enterTracker() {
     bindDemoBanner();
+    // Render immediately; sync live Supabase data in the background so a slow
+    // or hanging sync can't freeze the tracker login.
     if (typeof LIVE !== 'undefined' && LIVE.enabled()) {
-      try { await LIVE.syncIntoStore(); } catch (e) { console.warn('live sync', e); }
+      LIVE.syncIntoStore().then(applyRef).catch((e) => { console.warn('live sync', e); applyRef(); });
+    } else {
+      applyRef();
     }
+    showView("tracker");
+  }
+
+  function applyRef() {
     const ref = API.refs();
     projects = ref.data.projects || [];
     tasks = ref.data.tasks || [];
     allowances = (ref.data.breakAllowances) || {};
     settings = Object.assign(settings, API.settings().data || {});
     fillSelect();
-    const mine = API.myActive(me.id);
-    currentSession = (mine.data && (mine.data.status === "active" || mine.data.status === "paused")) ? mine.data : null;
+    const resp = API.myActive(me.id);
+    const mine = { ok: true, data: null };
+    const cur = resp && resp.data ? resp.data : null;
+    currentSession = (cur && (cur.status === "active" || cur.status === "paused")) ? cur : null;
     const open = API.openBreaks().find(b => b.employee_id === me.id);
     if (open) currentBreak = open;
     refreshUI();
-    showView("tracker");
-    await refreshToday();
+    refreshToday();
+    renderBreakUI();
     if (currentSession) bindRunningState();
     el.statusPill.textContent = currentSession ? (currentBreak ? "On Break" : "Working") : "Offline";
-    renderBreakUI();
   }
 
   function fillSelect() {

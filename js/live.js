@@ -1,12 +1,14 @@
 /* =========================================================================
- * TT - live.js  (Supabase data adapter)
- * Pulls the reference/people data (employees, teams, projects, tasks) from
- * the real Supabase project so the tracker shows your actual staff instead
- * of the demo seed. Used only when the current user is a Supabase authed
- * admin; otherwise the Demo Store remains the fallback.
+ * TT - live.js  (Supabase data adapter — read + write-through)
+ * - PULL: reads employees/teams/projects/tasks from the real Supabase project
+ *   and merges them into the demo Store so the tracker shows real data.
+ * - PUSH: writes admin-created/edited projects & tasks back to Supabase so
+ *   they sync to every device (projects/tasks have no direct insert policy, so
+ *   pushes go through SECURITY DEFINER RPCs — see backend/live_rpc.sql).
  *
- * This is read-sync for people/reference data. Session/break/screenshot
- * records still live in the Store until the write-sync adapter is enabled.
+ * All network calls are TIMEOUT-BOUNDED so a slow/hanging Supabase can never
+ * block login or the dashboard (the earlier "admin login glitches, pages won't
+ * open" bug: enterDash awaited an unbounded sync).
  * ========================================================================= */
 
 const LIVE = (() => {
@@ -23,18 +25,25 @@ const LIVE = (() => {
     );
   }
 
-  /* Fetch rows; return [] on failure so callers degrade to demo Store. */
+  /* Bound any promise to a timeout (ms) so the caller can never hang. */
+  function withTimeout(promise, ms) {
+    return Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('supabase timeout')), ms || 6000)),
+    ]);
+  }
+
+  /* Fetch rows; return [] on failure so callers degrade gracefully. */
   async function fetchAll(table, select) {
     try {
-      if (!enabled()) return [];
       const sb = client();
-      const { data, error } = await sb.from(table).select(select || "*");
+      if (!sb) return [];
+      const { data, error } = await withTimeout(sb.from(table).select(select || "*"), 6000);
       if (error) { console.warn('LIVE fetch ' + table, error.message); return []; }
       return data || [];
     } catch (e) { console.warn('LIVE fetch ' + table, e.message); return []; }
   }
 
-  /* Normalize a Supabase employee row into the Store's shape. */
   function mapEmployee(r) {
     return {
       id: r.id, email: r.email, full_name: r.full_name || r.email, role: r.role || 'employee',
@@ -44,7 +53,6 @@ const LIVE = (() => {
     };
   }
 
-  /* Build the current data snapshot: people + projects + tasks. */
   async function pull() {
     const [emps, teams, projects, tasks] = await Promise.all([
       fetchAll('employees', 'id,email,full_name,role,hourly_rate,currency,team,is_active,created_at'),
@@ -60,39 +68,70 @@ const LIVE = (() => {
     };
   }
 
-  /* Merge a Supabase snapshot into the global Demo Store so every admin page
-     reads from one consistent source. Keeps Store as the write layer. */
+  /* Timeout-bounded syncIntoStore. */
   async function syncIntoStore() {
+    return withTimeout(doSync(), 8000);
+  }
+
+  async function doSync() {
     const snap = await pull();
+    const DB = (window.Store || window.API)._raw;
     if (!snap.employees.length && !snap.projects.length) {
-      const s = window.Store || window.API;
-      if (s && s._raw) s._raw._liveSync = { ok: false, note: 'Supabase returned no people/projects yet (or not authed).' };
+      if (DB) DB._liveSync = { ok: false, note: 'Supabase returned no data yet (empty tables or not authed).' };
       return { ok: false, note: 'empty' };
     }
-    const DB = (window.Store || window.API)._raw;
-
-    // employees: match by email/uuid; replace demo seed entries with live ones
-    snap.employees.forEach(live => {
-      const existing = DB.employees.find(e => e.id === live.id || (e.email||'').toLowerCase() === (live.email||'').toLowerCase());
-      if (existing) { Object.assign(existing, live); existing._src = 'supabase'; }
-      else DB.employees.push(live);
-    });
-    // drop demo-only seed employees that are not in supabase? Keep them but mark demo.
-    DB.employees.forEach(e => { if (e._src !== 'supabase') e._src = 'demo'; });
-
-    // teams registry in settings
+    if (snap.employees.length) {
+      snap.employees.forEach(live => {
+        const existing = DB.employees.find(e => e.id === live.id || (e.email||'').toLowerCase() === (live.email||'').toLowerCase());
+        if (existing) { Object.assign(existing, live); existing._src = 'supabase'; }
+        else DB.employees.push(live);
+      });
+      DB.employees.forEach(e => { if (e._src !== 'supabase') e._src = 'demo'; });
+    }
     if (snap.teams.length) {
       const set = DB.settings.teams = DB.settings.teams || [];
       snap.teams.forEach(t => { if (!set.some(x => x.id === t.id)) set.push(t); });
     }
-
-    // projects + tasks: replace demo projects with the live set
-    if (snap.projects.length) DB.projects = snap.projects;
-    if (snap.tasks.length) DB.tasks = snap.tasks;
-
+    // Only clobber demo projects/tasks with live ones when Supabase actually
+    // has them. Keep demo-only projects (they'll be pushed on the next save).
+    if (snap.projects.length) {
+      const liveNames = snap.projects.map(p => String(p.name||'').toLowerCase());
+      const kept = DB.projects.filter(p => !liveNames.includes(String(p.name||'').toLowerCase()));
+      DB.projects = snap.projects.concat(kept);
+      DB._livePush = (DB._livePush||[]).concat(kept);
+    }
+    if (snap.tasks.length && snap.projects.length) DB.tasks = snap.tasks;
     DB._liveSync = { ok: true, at: new Date().toISOString(), employees: snap.employees.length, projects: snap.projects.length };
     return { ok: true, data: DB._liveSync };
   }
 
-  return { pull, syncIntoStore, enabled, client };
+  /* ---------------- WRITE-THROUGH (admin saves -> Supabase) ---------------- */
+
+  function rpc(name, body, timeoutMs) {
+    return withTimeout((async () => {
+      const sb = client();
+      if (!sb) return false;
+      const { error } = await sb.rpc(name, body || {});
+      if (error) { console.warn('LIVE rpc ' + name, error.message); return false; }
+      return true;
+    })(), timeoutMs || 6000);
+  }
+
+  /* Push the current (post-edit) project + task lists up to Supabase via RPC.
+     Idempotent by name. Returns {ok, pushedProjectCount, pushedTaskCount}. */
+  async function syncProjectsUp() {
+    const DB = (window.Store || window.API)._raw;
+    if (!DB) return { ok: false };
+    const projects = (DB.projects||[]).map(p => ({ name: p.name || '', is_archived: !!p.is_archived }));
+    const tasks = (DB.tasks||[]).map(t => ({
+      project_name: (DB.projects.find(p=>p.id===t.project_id)||{}).name || '',
+      name: t.name || '', is_archived: !!t.is_archived,
+    })).filter(t=>t.project_name);
+    const ok = await rpc('tt_sync_projects_tasks', { p_projects: projects, p_tasks: tasks }, 8000);
+    if (!ok) return { ok: false };
+    delete DB._livePush;
+    return { ok: true, pushedProjectCount: projects.length, pushedTaskCount: tasks.length };
+  }
+
+  return { pull, syncIntoStore, syncProjectsUp, enabled, client };
 })();

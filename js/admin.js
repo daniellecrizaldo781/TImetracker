@@ -39,19 +39,25 @@
 
   async function enterDash() {
     if (API.isDemo()) { $("demoBanner").hidden = false; $("demoBanner").textContent = window.TT_CONFIG.DEMO_NOTE; }
-    // Pull real people/projects/tasks from Supabase when the authed admin has
-    // them; otherwise the Demo Store's seeded data stays.
+    // Render immediately with whatever data is in the Store; pull live Supabase
+    // data in the background so a slow/hanging sync can never block the login.
     if (typeof LIVE !== 'undefined' && LIVE.enabled()) {
-      try { await LIVE.syncIntoStore(); } catch (e) { console.warn('live sync', e); }
+      LIVE.syncIntoStore().then(() => {
+        refillIndexes();
+        switchPage(state.page || "overview");
+      }).catch((e) => console.warn('live sync', e));
     }
+    refillIndexes();
+    showView("dash");
+    switchPage("overview");
+  }
+
+  function refillIndexes() {
     const ref = API.refs().data;
     ref.employees.forEach(e => empIndex[e.id] = e);
     ref.projects.forEach(p => projectsIndex[p.id] = p);
-    // empty empId -> all
     settings = Object.assign({}, API.settings().data || {});
     (settings.teams || []).forEach(t => teamIndex[t.id] = t.name);
-    showView("dash");
-    switchPage("overview");
   }
 
   const TITLES = {
@@ -675,16 +681,16 @@
       const r=v ? API.addProject(v) : {ok:false,error:"Enter a project name."};
       m.textContent = r.ok ? `Added "${v}".` : (r.error||"Error");
       m.classList.toggle("ok", r.ok); m.classList.toggle("error", !r.ok); m.hidden=false;
-      if (r.ok) { $("npName").value=""; projectsIndex[r.data.id]=r.data.name; renderProjects(); }
+      if (r.ok) { $("npName").value=""; projectsIndex[r.data.id]=r.data.name; pushProjectsUp(); renderProjects(); }
     });
 
     // project edit/delete
     document.querySelectorAll(".proj-edit").forEach(b => b.addEventListener("click", () => {
       const name = prompt("Rename project:", b.dataset.name);
-      if (name && name.trim()) { API.updateProject(b.dataset.pid, { name: name.trim() }); projectsIndex[b.dataset.pid]=name.trim(); renderProjects(); }
+      if (name && name.trim()) { API.updateProject(b.dataset.pid, { name: name.trim() }); projectsIndex[b.dataset.pid]=name.trim(); pushProjectsUp(); renderProjects(); }
     }));
     document.querySelectorAll(".proj-del").forEach(b => b.addEventListener("click", () => {
-      if (confirm("Delete this project and its tasks?")) { API.removeProject(b.dataset.pid); renderProjects(); }
+      if (confirm("Delete this project and its tasks?")) { API.removeProject(b.dataset.pid); pushProjectsUp(); renderProjects(); }
     }));
 
     // add task
@@ -693,17 +699,26 @@
       const v = (input && input.value || "").trim();
       if (!v) return;
       API.addTask(btn.dataset.pid, v);
+      pushProjectsUp();
       renderProjects();
     }));
     // task edit
     document.querySelectorAll(".task-edit").forEach(b => b.addEventListener("click", () => {
       const name = prompt("Rename task:", b.dataset.tax);
-      if (name && name.trim()) { API.updateTask(b.dataset.tid, { name: name.trim() }); renderProjects(); }
+      if (name && name.trim()) { API.updateTask(b.dataset.tid, { name: name.trim() }); pushProjectsUp(); renderProjects(); }
     }));
     // task delete
     document.querySelectorAll(".task-del").forEach(b => b.addEventListener("click", () => {
-      if (confirm("Delete this task?")) { API.removeTask(b.dataset.tid); renderProjects(); }
+      if (confirm("Delete this task?")) { API.removeTask(b.dataset.tid); pushProjectsUp(); renderProjects(); }
     }));
+  }
+
+  /* Best-effort live push of projects/tasks to Supabase (never blocks UI).
+     Runs only when LIVE is wired & authed; silently skipped otherwise. */
+  function pushProjectsUp() {
+    if (typeof LIVE !== 'undefined' && LIVE.enabled()) {
+      try { LIVE.syncProjectsUp().catch((e) => console.warn('push projects', e)); } catch (e) { console.warn('push projects', e); }
+    }
   }
 
   /* ============================ SETTINGS ============================ */
