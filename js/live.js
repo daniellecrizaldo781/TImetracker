@@ -17,6 +17,22 @@ const LIVE = (() => {
     return !!(window.supabase && window.TT_CONFIG && window.TT_CONFIG.supabaseUrl && window.TT_CONFIG.supabaseAnonKey);
   }
 
+  /* Store/API are top-level `const`s (script globals) — reachable as bare
+     identifiers, NOT as window.Store/window.API (those are undefined, which
+     broke the live merge: 'Cannot read properties of undefined (_raw)'). */
+  function store() {
+    try {
+      if (typeof API !== 'undefined') return API;
+      if (typeof Store !== 'undefined') return Store;
+    } catch (e) {}
+    return window.API || window.Store || null;
+  }
+
+  function raw() {
+    const s = store();
+    return (s && s._raw) ? s._raw : null;
+  }
+
   function client() {
     if (!enabled()) return null;
     return window.supabase.createClient(
@@ -56,7 +72,7 @@ const LIVE = (() => {
   async function pull() {
     const [emps, teams, projects, tasks] = await Promise.all([
       fetchAll('employees', 'id,email,full_name,role,hourly_rate,currency,team,is_active,created_at'),
-      fetchAll('teams', 'id,name,created_at'),
+      fetchAll('teams', 'id,name'),
       fetchAll('projects', 'id,name,is_archived,created_at'),
       fetchAll('tasks', 'id,project_id,name,is_archived'),
     ]);
@@ -75,9 +91,10 @@ const LIVE = (() => {
 
   async function doSync() {
     const snap = await pull();
-    const DB = (window.Store || window.API)._raw;
+    const DB = raw();
+    if (!DB) return { ok: false, note: 'store not ready' };
     if (!snap.employees.length && !snap.projects.length) {
-      if (DB) DB._liveSync = { ok: false, note: 'Supabase returned no data yet (empty tables or not authed).' };
+      DB._liveSync = { ok: false, note: 'Supabase returned no data yet (empty tables or not authed).' };
       return { ok: false, note: 'empty' };
     }
     if (snap.employees.length) {
@@ -120,7 +137,7 @@ const LIVE = (() => {
   /* Push the current (post-edit) project + task lists up to Supabase via RPC.
      Idempotent by name. Returns {ok, pushedProjectCount, pushedTaskCount}. */
   async function syncProjectsUp() {
-    const DB = (window.Store || window.API)._raw;
+    const DB = raw();
     if (!DB) return { ok: false };
     const projects = (DB.projects||[]).map(p => ({ name: p.name || '', is_archived: !!p.is_archived }));
     const tasks = (DB.tasks||[]).map(t => ({
